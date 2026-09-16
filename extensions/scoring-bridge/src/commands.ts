@@ -2,6 +2,7 @@ import { isHostCommand } from './contract/messages';
 import type {
   ActivateToolCommand,
   DeactivateToolCommand,
+  FocusMeasurementCommand,
   HostCommand,
   RemoveMeasurementCommand,
 } from './contract/messages';
@@ -43,6 +44,12 @@ export interface ToolCommandsDeps {
    * entry point — handleMessage — with one origin check and one contract guard in front of it.
    */
   onRemoveMeasurement: (command: RemoveMeasurementCommand) => void;
+  /**
+   * FOCUS_MEASUREMENT, injected for the same reason as onRemoveMeasurement: it is about an
+   * annotation and a viewport, not about the armed tool, so its implementation lives in focus.ts
+   * while the single origin-checked entry point stays here.
+   */
+  onFocusMeasurement: (command: FocusMeasurementCommand) => void;
 }
 
 export interface ToolCommands {
@@ -60,6 +67,7 @@ export function createToolCommands({
   servicesManager,
   commandsManager,
   onRemoveMeasurement,
+  onFocusMeasurement,
 }: ToolCommandsDeps): ToolCommands {
   const { toolGroupService } = servicesManager.services;
 
@@ -185,8 +193,14 @@ export function createToolCommands({
         // row that is currently armed, the user is still waiting to draw for that row.
         onRemoveMeasurement(command);
         return;
+      case 'FOCUS_MEASUREMENT':
+        // S-5.3. Like REMOVE_MEASUREMENT it leaves the armed state alone: scrolling to an existing
+        // annotation says nothing about which row the *next* drawing belongs to, and the user may
+        // well click a filled row to look at it while another row is armed and waiting.
+        onFocusMeasurement(command);
+        return;
       default:
-        // Unreachable while HostCommand has exactly these three members; kept so that adding a
+        // Unreachable while HostCommand has exactly these four members; kept so that adding a
         // command to the contract without handling it here fails the type check.
         console.warn('[scoring-bridge] unhandled host command', command);
     }
