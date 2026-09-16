@@ -6,3 +6,9 @@
  * targetOrigin for every outgoing event (Q-2). It is never '*'.
  */
 export const HOST_ORIGIN = 'http://localhost:5173';
+
+/**
+ * Prefix of every console line the bridge writes, so the bridge's output can be filtered out of
+ * OHIF's own logging in the devtools console.
+ */
+export const LOG_PREFIX = '[scoring-bridge]';

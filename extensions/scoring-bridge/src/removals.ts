@@ -1,3 +1,4 @@
+import { LOG_PREFIX } from './config';
 import type { RemoveMeasurementCommand } from './contract/messages';
 
 /**
@@ -45,10 +46,10 @@ export interface RemovalCommands {
   dispose: () => void;
 }
 
-export function createRemovalCommands({
+export const createRemovalCommands = ({
   servicesManager,
   forget,
-}: RemovalCommandsDeps): RemovalCommands {
+}: RemovalCommandsDeps): RemovalCommands => {
   const { measurementService } = servicesManager.services;
 
   /** uid -> requestId of the REMOVE_MEASUREMENT command currently being executed for it. */
@@ -59,7 +60,7 @@ export function createRemovalCommands({
 
     if (!measurementService) {
       console.warn(
-        `[scoring-bridge] REMOVE_MEASUREMENT ${requestId}: measurementService unavailable; ignored`
+        `${LOG_PREFIX} REMOVE_MEASUREMENT ${requestId}: measurementService unavailable; ignored`
       );
       return;
     }
@@ -70,7 +71,7 @@ export function createRemovalCommands({
     // getMeasurement: MeasurementService.ts:198.
     if (!measurementService.getMeasurement(measurementUid)) {
       console.debug(
-        `[scoring-bridge] REMOVE_MEASUREMENT ${requestId}: measurement ${measurementUid} (row ${rowId}) is already gone; nothing to do`
+        `${LOG_PREFIX} REMOVE_MEASUREMENT ${requestId}: measurement ${measurementUid} (row ${rowId}) is already gone; nothing to do`
       );
       // The host and the viewer agree about the outcome, so this is success, not an error: the
       // row is empty either way. Only our own bookkeeping may still hold the uid.
@@ -98,7 +99,7 @@ export function createRemovalCommands({
 
     forget(measurementUid);
     console.debug(
-      `[scoring-bridge] REMOVE_MEASUREMENT ${requestId}: removed ${measurementUid} (row ${rowId})`
+      `${LOG_PREFIX} REMOVE_MEASUREMENT ${requestId}: removed ${measurementUid} (row ${rowId})`
     );
   };
 
@@ -113,4 +114,4 @@ export function createRemovalCommands({
       pendingRemovals.clear();
     },
   };
-}
+};

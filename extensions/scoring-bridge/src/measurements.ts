@@ -1,3 +1,4 @@
+import { LOG_PREFIX } from './config';
 import type { Metrics, Unit } from './contract/messages';
 
 /**
@@ -67,9 +68,7 @@ const LENGTH_UNITS: Record<string, Unit> = {
 };
 
 /** Drops the calibration-type suffix (`'mm² ERMF'` -> `'mm²'`) and trims. */
-function baseUnitToken(raw: string): string {
-  return raw.trim().split(/\s+/)[0] ?? '';
-}
+const baseUnitToken = (raw: string): string => raw.trim().split(/\s+/)[0] ?? '';
 
 /**
  * How loudly a failed mapping is reported.
@@ -85,7 +84,7 @@ export interface MetricsOptions {
   quiet?: boolean;
 }
 
-function note(quiet: boolean | undefined, message: string, detail?: unknown): void {
+const note = (quiet: boolean | undefined, message: string, detail?: unknown): void => {
   const log = quiet ? console.debug : console.warn;
 
   if (detail === undefined) {
@@ -93,16 +92,16 @@ function note(quiet: boolean | undefined, message: string, detail?: unknown): vo
   } else {
     log(message, detail);
   }
-}
+};
 
-function normaliseUnit(
+const normaliseUnit = (
   raw: unknown,
   table: Record<string, Unit>,
   context: string,
   quiet?: boolean
-): Unit | null {
+): Unit | null => {
   if (typeof raw !== 'string' || raw.trim().length === 0) {
-    note(quiet, `[scoring-bridge] ${context}: missing unit`, raw);
+    note(quiet, `${LOG_PREFIX} ${context}: missing unit`, raw);
     return null;
   }
 
@@ -111,16 +110,15 @@ function normaliseUnit(
   if (!unit) {
     // Specific: an unmapped unit means the wire format would lie about what the number is, and a
     // wrong unit poisons the per-unit sum on the host (Q-6). Dropping is the safe side.
-    note(quiet, `[scoring-bridge] ${context}: unsupported unit string "${raw}"`);
+    note(quiet, `${LOG_PREFIX} ${context}: unsupported unit string "${raw}"`);
     return null;
   }
 
   return unit;
-}
+};
 
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
 
 /**
  * Picks the stats entry to read. Preference order:
@@ -130,7 +128,7 @@ function isFiniteNumber(value: unknown): value is number {
  * A stack viewport produces exactly one entry, so (2) is the normal path for volume/mpr setups
  * and a safety net when the key spelling changes.
  */
-function findStatsEntry(measurement: OhifMeasurementLike, key: string): StatsEntry | null {
+const findStatsEntry = (measurement: OhifMeasurementLike, key: string): StatsEntry | null => {
   const data = measurement.data;
 
   if (!data || typeof data !== 'object') {
@@ -151,16 +149,16 @@ function findStatsEntry(measurement: OhifMeasurementLike, key: string): StatsEnt
   }
 
   return null;
-}
+};
 
 /** EllipticalROI / RectangleROI: `{ area: { value, unit } }`. */
-function toAreaMetrics(measurement: OhifMeasurementLike, quiet?: boolean): Metrics | null {
+const toAreaMetrics = (measurement: OhifMeasurementLike, quiet?: boolean): Metrics | null => {
   const stats = findStatsEntry(measurement, 'area');
 
   if (!stats) {
     note(
       quiet,
-      `[scoring-bridge] no area in measurement.data for ${measurement.uid ?? '(no uid)'}`,
+      `${LOG_PREFIX} no area in measurement.data for ${measurement.uid ?? '(no uid)'}`,
       measurement.data
     );
     return null;
@@ -178,20 +176,20 @@ function toAreaMetrics(measurement: OhifMeasurementLike, quiet?: boolean): Metri
   }
 
   return { area: { value: stats.area as number, unit } };
-}
+};
 
 /**
  * Length: `{ length: { value, unit } }`. Best effort — the ellipse path is the one the slice
  * verifies. Note OHIF's own `'mm'` default at Length.ts:118; we do not copy that default, because
  * guessing millimetres on an uncalibrated image is exactly the mistake Q-6 guards against.
  */
-function toLengthMetrics(measurement: OhifMeasurementLike, quiet?: boolean): Metrics | null {
+const toLengthMetrics = (measurement: OhifMeasurementLike, quiet?: boolean): Metrics | null => {
   const stats = findStatsEntry(measurement, 'length');
 
   if (!stats) {
     note(
       quiet,
-      `[scoring-bridge] no length in measurement.data for ${measurement.uid ?? '(no uid)'}`,
+      `${LOG_PREFIX} no length in measurement.data for ${measurement.uid ?? '(no uid)'}`,
       measurement.data
     );
     return null;
@@ -209,16 +207,16 @@ function toLengthMetrics(measurement: OhifMeasurementLike, quiet?: boolean): Met
   }
 
   return { length: { value: stats.length as number, unit } };
-}
+};
 
 /**
  * Maps one OHIF measurement to the contract `metrics`, or null when nothing can be reported
  * honestly (unknown tool, missing stats, unmappable unit). The caller does not post on null.
  */
-export function toMetrics(
+export const toMetrics = (
   measurement: OhifMeasurementLike,
   { quiet }: MetricsOptions = {}
-): Metrics | null {
+): Metrics | null => {
   switch (measurement?.toolName) {
     case 'EllipticalROI':
     case 'RectangleROI':
@@ -228,8 +226,8 @@ export function toMetrics(
     default:
       note(
         quiet,
-        `[scoring-bridge] no metric mapping for tool "${measurement?.toolName ?? '(none)'}"`
+        `${LOG_PREFIX} no metric mapping for tool "${measurement?.toolName ?? '(none)'}"`
       );
       return null;
   }
-}
+};

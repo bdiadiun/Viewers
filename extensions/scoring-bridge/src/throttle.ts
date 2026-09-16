@@ -23,17 +23,17 @@
 
 export interface ThrottledEmitter<T> {
   /** Offers `value` as the newest state of `key`; emits now or on the trailing timer. */
-  push(key: string, value: T): void;
+  push: (key: string, value: T) => void;
   /** Emits the pending value of `key` (or of every key when omitted) right away. */
-  flush(key?: string): void;
+  flush: (key?: string) => void;
   /**
    * Forgets `key` without emitting: its pending value and its trailing timer are dropped.
    * Used when the measurement behind the key ceases to exist (S-5.2): a trailing
    * MEASUREMENT_UPDATED for an annotation the host has just removed would resurrect a deleted row.
    */
-  discard(key: string): void;
+  discard: (key: string) => void;
   /** Q-5: cancels every timer and drops every pending value. */
-  dispose(): void;
+  dispose: () => void;
 }
 
 interface KeyState<T> {
@@ -41,14 +41,14 @@ interface KeyState<T> {
   lastEmitAt: number | null;
   /** Timer that will emit `pending`, or null when no emit is scheduled. */
   timer: ReturnType<typeof setTimeout> | null;
-  /** Latest value offered since the last emit; `has` distinguishes "none" from a falsy value. */
+  /** Latest value offered since the last emit; the wrapper distinguishes "none" from a falsy value. */
   pending: { value: T } | null;
 }
 
-export function createThrottledEmitter<T>(
+export const createThrottledEmitter = <T>(
   intervalMs: number,
   emit: (key: string, value: T) => void
-): ThrottledEmitter<T> {
+): ThrottledEmitter<T> => {
   const states = new Map<string, KeyState<T>>();
   let disposed = false;
 
@@ -69,7 +69,7 @@ export function createThrottledEmitter<T>(
   };
 
   return {
-    push(key: string, value: T): void {
+    push: (key: string, value: T): void => {
       if (disposed) {
         return;
       }
@@ -100,7 +100,7 @@ export function createThrottledEmitter<T>(
       scheduled.timer = setTimeout(() => fire(key, scheduled), wait);
     },
 
-    flush(key?: string): void {
+    flush: (key?: string): void => {
       if (disposed) {
         return;
       }
@@ -127,7 +127,7 @@ export function createThrottledEmitter<T>(
       }
     },
 
-    discard(key: string): void {
+    discard: (key: string): void => {
       const state = states.get(key);
 
       if (!state) {
@@ -143,7 +143,7 @@ export function createThrottledEmitter<T>(
       states.delete(key);
     },
 
-    dispose(): void {
+    dispose: (): void => {
       disposed = true;
 
       for (const state of states.values()) {
@@ -157,4 +157,4 @@ export function createThrottledEmitter<T>(
       states.clear();
     },
   };
-}
+};

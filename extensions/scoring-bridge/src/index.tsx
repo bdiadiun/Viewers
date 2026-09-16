@@ -1,4 +1,4 @@
-import { Types } from '@ohif/core';
+import type { Types } from '@ohif/core';
 
 import { id } from './id';
 import { createBridge } from './bridge';
@@ -15,7 +15,10 @@ const scoringBridgeExtension: Types.Extensions.Extension = {
   /** Only required property. Unique across all extensions. */
   id,
 
-  preRegistration: ({ servicesManager, commandsManager }: Types.Extensions.ExtensionParams) => {
+  preRegistration: ({
+    servicesManager,
+    commandsManager,
+  }: Types.Extensions.ExtensionParams): void => {
     const bridge = createBridge({ servicesManager, commandsManager });
 
     // Lifetime (Q-5). Extensions may register onModeEnter / onModeExit
@@ -23,7 +26,7 @@ const scoringBridgeExtension: Types.Extensions.Extension = {
     // the bridge must outlive them, because the host keeps talking to the same iframe while the
     // user moves between modes. There is no extension-level "unregister" hook, so the bridge lives
     // for the page lifetime and is disposed when the document goes away.
-    const onPageHide = () => {
+    const onPageHide = (): void => {
       bridge.dispose();
       window.removeEventListener('pagehide', onPageHide);
     };

@@ -1,3 +1,4 @@
+import { LOG_PREFIX } from './config';
 import { isHostCommand } from './contract/messages';
 import type {
   ActivateToolCommand,
@@ -23,6 +24,21 @@ import type {
  * loose, Pan sits on the auxiliary button there.
  */
 const FALLBACK_TOOL = 'WindowLevel';
+
+/**
+ * Why an armed row is being disarmed. Internal state that only reaches the debug log; the values
+ * are the phrases the log line prints.
+ */
+export enum DisarmReason {
+  /** C-4.3.6: the drawing finished and MEASUREMENT_ADDED has been posted. */
+  MeasurementReceived = 'measurement received',
+  /** The host cancelled the arming. */
+  DeactivateTool = 'DEACTIVATE_TOOL',
+  /** A-4: another row was armed; the log line appends the new row id. */
+  SwitchingRow = 'switching to row',
+  /** Q-5: the bridge is being torn down. */
+  BridgeDispose = 'bridge dispose',
+}
 
 export interface ArmedState {
   /** Form row this activation belongs to; travels back on MEASUREMENT_ADDED (Q-3, A-8). */
@@ -59,16 +75,19 @@ export interface ToolCommands {
   getArmedRowId: () => string | null;
   /** Full armed state, for the next slice (rowId + causedBy + tool restore after a measurement). */
   getArmed: () => ArmedState | null;
-  /** Puts the pre-arming tool back and clears the armed state. No-op when nothing is armed. */
-  disarm: (reason: string) => void;
+  /**
+   * Puts the pre-arming tool back and clears the armed state. No-op when nothing is armed.
+   * `detail` is appended to the reason in the log line (e.g. the row being switched to).
+   */
+  disarm: (reason: DisarmReason, detail?: string) => void;
 }
 
-export function createToolCommands({
+export const createToolCommands = ({
   servicesManager,
   commandsManager,
   onRemoveMeasurement,
   onFocusMeasurement,
-}: ToolCommandsDeps): ToolCommands {
+}: ToolCommandsDeps): ToolCommands => {
   const { toolGroupService } = servicesManager.services;
 
   let armed: ArmedState | null = null;
@@ -105,13 +124,17 @@ export function createToolCommands({
     const toolGroup = getActiveToolGroup();
 
     if (!toolGroup) {
-      console.error(`[scoring-bridge] no tool group for the active viewport; cannot activate ${toolName}`);
+      console.error(
+        `${LOG_PREFIX} no tool group for the active viewport; cannot activate ${toolName}`
+      );
       return false;
     }
 
     if (!toolGroup.hasTool(toolName)) {
       // Nothing is posted back yet; the error event is part of a later slice.
-      console.error(`[scoring-bridge] tool ${toolName} is not registered in tool group ${toolGroup.id}`);
+      console.error(
+        `${LOG_PREFIX} tool ${toolName} is not registered in tool group ${toolGroup.id}`
+      );
       return false;
     }
 
@@ -120,14 +143,14 @@ export function createToolCommands({
   };
 
   /** Restores the tool remembered at arming time (or the default) and clears `armed`. */
-  const disarm = (reason: string): void => {
+  const disarm = (reason: DisarmReason, detail?: string): void => {
     if (!armed) {
       return;
     }
 
     const toolToRestore = armed.previousTool ?? FALLBACK_TOOL;
     console.debug(
-      `[scoring-bridge] disarming row ${armed.rowId} (${reason}); restoring tool ${toolToRestore}`
+      `${LOG_PREFIX} disarming row ${armed.rowId} (${detail === undefined ? reason : `${reason} ${detail}`}); restoring tool ${toolToRestore}`
     );
     armed = null;
     activateTool(toolToRestore);
@@ -137,14 +160,14 @@ export function createToolCommands({
     // Idempotent re-activation of the row already armed: the viewer is in the requested state,
     // so doing it again would only overwrite `previousTool` with the tool we ourselves armed (A-10).
     if (armed && armed.rowId === command.rowId) {
-      console.debug(`[scoring-bridge] ACTIVATE_TOOL for already armed row ${command.rowId}; ignored`);
+      console.debug(`${LOG_PREFIX} ACTIVATE_TOOL for already armed row ${command.rowId}; ignored`);
       return;
     }
 
     // Switching rows: cancel the previous arming first, so `previousTool` snapshotted below is the
     // user's own tool and not the ROI tool we armed for the other row (A-4).
     if (armed) {
-      disarm(`switching to row ${command.rowId}`);
+      disarm(DisarmReason.SwitchingRow, command.rowId);
     }
 
     const previousTool = readActiveTool();
@@ -156,7 +179,7 @@ export function createToolCommands({
 
     armed = { rowId: command.rowId, requestId: command.requestId, previousTool };
     console.debug(
-      `[scoring-bridge] armed row ${command.rowId} with ${command.toolName}; previous tool ${previousTool ?? '(unknown)'}`
+      `${LOG_PREFIX} armed row ${command.rowId} with ${command.toolName}; previous tool ${previousTool ?? '(unknown)'}`
     );
   };
 
@@ -164,18 +187,20 @@ export function createToolCommands({
     // Not armed at all, or armed for a different row: the requested state already holds, so this
     // is a no-op rather than an error (A-10 idempotency; e.g. a cancel racing a finished drawing).
     if (!armed) {
-      console.debug(`[scoring-bridge] DEACTIVATE_TOOL for row ${command.rowId} while unarmed; ignored`);
+      console.debug(
+        `${LOG_PREFIX} DEACTIVATE_TOOL for row ${command.rowId} while unarmed; ignored`
+      );
       return;
     }
 
     if (armed.rowId !== command.rowId) {
       console.debug(
-        `[scoring-bridge] DEACTIVATE_TOOL for row ${command.rowId} while row ${armed.rowId} is armed; ignored`
+        `${LOG_PREFIX} DEACTIVATE_TOOL for row ${command.rowId} while row ${armed.rowId} is armed; ignored`
       );
       return;
     }
 
-    disarm('DEACTIVATE_TOOL');
+    disarm(DisarmReason.DeactivateTool);
   };
 
   const dispatch = (command: HostCommand): void => {
@@ -202,7 +227,7 @@ export function createToolCommands({
       default:
         // Unreachable while HostCommand has exactly these four members; kept so that adding a
         // command to the contract without handling it here fails the type check.
-        console.warn('[scoring-bridge] unhandled host command', command);
+        console.warn(`${LOG_PREFIX} unhandled host command`, command);
     }
   };
 
@@ -211,7 +236,7 @@ export function createToolCommands({
       // Q-7: the contract guard is the only accepted way in. Anything else (a stray postMessage
       // from the host page, an older protocol version) is dropped loudly but harmlessly.
       if (!isHostCommand(data)) {
-        console.warn('[scoring-bridge] ignoring message that is not a valid host command', data);
+        console.warn(`${LOG_PREFIX} ignoring message that is not a valid host command`, data);
         return;
       }
 
@@ -221,4 +246,4 @@ export function createToolCommands({
     getArmed: () => armed,
     disarm,
   };
-}
+};
