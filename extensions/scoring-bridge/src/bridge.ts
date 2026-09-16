@@ -1,4 +1,5 @@
 import { HOST_ORIGIN } from './config';
+import { createToolCommands } from './commands';
 import type { ViewerReadyEvent } from './contract/messages';
 
 /**
@@ -14,13 +15,15 @@ type Unsubscribe = () => void;
 export interface BridgeDeps {
   /** OHIF services container; we use measurementService and (optionally) toolGroupService. */
   servicesManager: AppTypes.ServicesManager;
-  /** Kept for the next slice, where ACTIVATE_TOOL calls commandsManager.runCommand('setToolActive'). */
+  /** Used by ACTIVATE_TOOL / DEACTIVATE_TOOL via commandsManager.runCommand('setToolActive'). */
   commandsManager: AppTypes.CommandsManager;
 }
 
 export interface Bridge {
   /** Removes every listener and subscription this bridge created (Q-5). */
   dispose: Unsubscribe;
+  /** Row currently waiting for a drawing, or null. Consumed by the MEASUREMENT_ADDED slice. */
+  getArmedRowId: () => string | null;
 }
 
 /**
@@ -33,10 +36,10 @@ const VIEWER_VERSION = process.env.VERSION_NUMBER ?? 'unknown';
 export function createBridge({ servicesManager, commandsManager }: BridgeDeps): Bridge {
   const { measurementService, toolGroupService } = servicesManager.services;
 
-  // commandsManager is not used yet; referenced so the dependency is explicit and typed.
-  void commandsManager;
-
   const disposers: Unsubscribe[] = [];
+
+  // Command handling (ACTIVATE_TOOL / DEACTIVATE_TOOL) and the armed-row state live in commands.ts.
+  const toolCommands = createToolCommands({ servicesManager, commandsManager });
 
   // --- incoming messages -------------------------------------------------------------------
   // Q-2: everything that does not come from HOST_ORIGIN is dropped. We warn once so that a
@@ -55,8 +58,8 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
       return;
     }
 
-    // Command handling (ACTIVATE_TOOL / DEACTIVATE_TOOL) arrives in the next slice.
-    console.debug('[scoring-bridge] message accepted', event.data);
+    // Origin is trusted from here on; the shape still is not (Q-7).
+    toolCommands.handleMessage(event.data);
   };
 
   window.addEventListener('message', onMessage);
@@ -72,7 +75,15 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
     const subscription = measurementService.subscribe(
       measurementService.EVENTS.MEASUREMENT_ADDED,
       ({ measurement }: { measurement: { uid: string } }) => {
-        console.debug('[scoring-bridge] MEASUREMENT_ADDED', measurement?.uid);
+        console.debug(
+          '[scoring-bridge] MEASUREMENT_ADDED',
+          measurement?.uid,
+          'armed row',
+          toolCommands.getArmedRowId()
+        );
+        // next slice: map the measurement to { rowId, measurementUid, metrics } and post it to the
+        // host, then call toolCommands.disarm('measurement completed') so the tool deactivates
+        // itself and the previous tool comes back (C-4.3.6).
       }
     );
     disposers.push(() => subscription.unsubscribe());
@@ -135,7 +146,12 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
   }
 
   return {
+    getArmedRowId: toolCommands.getArmedRowId,
     dispose: () => {
+      // Q-5: the armed state is part of the cleanup. Restore the user's tool before the listeners
+      // go away, otherwise the viewer would be left waiting for a drawing nobody will report.
+      toolCommands.disarm('bridge dispose');
+
       while (disposers.length > 0) {
         const disposer = disposers.pop();
         try {
