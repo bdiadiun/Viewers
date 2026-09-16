@@ -1,10 +1,12 @@
 import { HOST_ORIGIN } from './config';
 import { createToolCommands } from './commands';
+import { createRemovalCommands } from './removals';
 import { toMetrics } from './measurements';
 import type { OhifMeasurementLike } from './measurements';
 import { createThrottledEmitter } from './throttle';
 import type {
   MeasurementAddedEvent,
+  MeasurementRemovedEvent,
   MeasurementUpdatedEvent,
   Metrics,
   ViewerReadyEvent,
@@ -16,7 +18,7 @@ import type {
  * It owns the whole postMessage surface of the viewer: OHIF itself has none, so every listener,
  * every origin check and every outgoing event lives here: the handshake (VIEWER_READY), the
  * incoming host commands (delegated to commands.ts) and MEASUREMENT_ADDED and
- * MEASUREMENT_UPDATED. MEASUREMENT_REMOVED is a bonus slice of its own.
+ * MEASUREMENT_UPDATED, MEASUREMENT_REMOVED.
  */
 
 type Unsubscribe = () => void;
@@ -47,8 +49,28 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
 
   const disposers: Unsubscribe[] = [];
 
+  /**
+   * Erases a uid from every piece of per-measurement state this bridge keeps. Assigned inside the
+   * `measurementService` block below, where that state is declared; a no-op until then (and
+   * forever, if there is no measurementService — in which case there is no state to erase either).
+   * Declared here because the removal commands are created before that block and need it.
+   */
+  let forgetMeasurement: (uid: string) => void = () => undefined;
+
+  // S-5.2: REMOVE_MEASUREMENT and the parked requestIds of the echo guard (A-10) live in
+  // removals.ts; the command still arrives through the single dispatch in commands.ts.
+  const removals = createRemovalCommands({
+    servicesManager,
+    forget: uid => forgetMeasurement(uid),
+  });
+  disposers.push(() => removals.dispose());
+
   // Command handling (ACTIVATE_TOOL / DEACTIVATE_TOOL) and the armed-row state live in commands.ts.
-  const toolCommands = createToolCommands({ servicesManager, commandsManager });
+  const toolCommands = createToolCommands({
+    servicesManager,
+    commandsManager,
+    onRemoveMeasurement: removals.handleRemove,
+  });
 
   /**
    * A-8: the viewer-side half of the correlation. The host issues `rowId`, the viewer issues
@@ -65,7 +87,11 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
    * posting to ourselves would only bounce off our own origin check.
    */
   const postToHost = (
-    message: ViewerReadyEvent | MeasurementAddedEvent | MeasurementUpdatedEvent
+    message:
+      | ViewerReadyEvent
+      | MeasurementAddedEvent
+      | MeasurementUpdatedEvent
+      | MeasurementRemovedEvent
   ): boolean => {
     if (window.parent === window) {
       console.debug(`[scoring-bridge] not embedded in an iframe -> skip ${message.type}`);
@@ -320,6 +346,77 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
       onMeasurementUpdated
     );
     disposers.push(() => updateSubscription.unsubscribe());
+
+    // --- removals ---------------------------------------------------------------------------
+    /**
+     * Everything this bridge remembers about one measurement, dropped in one place. Called from
+     * the MEASUREMENT_REMOVED subscriber below (whatever caused the deletion) and from the
+     * REMOVE_MEASUREMENT handler (removals.ts), which also reaches it for a uid that was already
+     * gone. Assigning the outer binding rather than declaring a new one: this state only exists
+     * when measurementService does.
+     */
+    forgetMeasurement = (uid: string): void => {
+      uidToRowId.delete(uid);
+      reportedUids.delete(uid);
+      lastSentMetrics.delete(uid);
+      // S-5.1 x S-5.2: a drag frame can still be sitting in the trailing timer when the annotation
+      // is deleted. Flushing it would post a MEASUREMENT_UPDATED for a measurement that no longer
+      // exists and, at the host, resurrect the value of a row that has just been cleared — so the
+      // pending value is discarded, not emitted.
+      updateEmitter.discard(uid);
+    };
+
+    /**
+     * S-5.2, the viewer -> host half: whoever deleted the annotation, the host hears about it.
+     *
+     * P-6, the echo-loop point (Q-4, A-10). This subscriber is the other end of the loop described
+     * in removals.ts: a REMOVE_MEASUREMENT command makes OHIF broadcast exactly the event this
+     * handler forwards. The two guards are:
+     *   - `causedBy` — `takeCause` returns the requestId parked by the handler a moment ago (the
+     *     broadcast is synchronous, MeasurementService.ts:674-689), so the host can recognise the
+     *     answer to its own command and not delete the row a second time. Absent when the deletion
+     *     started in the viewer, which is precisely the case the host must act on;
+     *   - idempotency, in the command handler — a REMOVE_MEASUREMENT for a uid that is already
+     *     gone produces no service call and therefore no event, so a loop cannot even get started.
+     *
+     * The event is posted for *every* uid, bound to a row or not: the viewer does not decide what
+     * the host's rows are (A-8). An unbound uid is simply one the host has nothing to do with.
+     *
+     * Payload shape: `{ source, measurement }` where `measurement` is the **uid string**, not the
+     * measurement object (MeasurementService.ts:686-689). `source` is kept out of the contract —
+     * it is an OHIF-internal mapping source, meaningless to the host.
+     */
+    const onMeasurementRemoved = ({ measurement }: { measurement: unknown }): void => {
+      const uid = typeof measurement === 'string' ? measurement : undefined;
+
+      if (uid === undefined || uid.length === 0) {
+        console.warn('[scoring-bridge] MEASUREMENT_REMOVED without a uid; ignored', measurement);
+        return;
+      }
+
+      const causedBy = removals.takeCause(uid);
+
+      const event: MeasurementRemovedEvent = {
+        version: 1,
+        type: 'MEASUREMENT_REMOVED',
+        measurementUid: uid,
+        causedBy,
+      };
+
+      forgetMeasurement(uid);
+
+      if (!postToHost(event)) {
+        return;
+      }
+
+      console.debug('[scoring-bridge] MEASUREMENT_REMOVED sent', event);
+    };
+
+    const removedSubscription = measurementService.subscribe(
+      measurementService.EVENTS.MEASUREMENT_REMOVED,
+      onMeasurementRemoved
+    );
+    disposers.push(() => removedSubscription.unsubscribe());
 
     // Why the post-ADDED correction above exists, measured while verifying the ADDED slice:
     // cornerstone fills `cachedStats` in its annotation render pass, which is scheduled, while
