@@ -2,15 +2,21 @@ import { HOST_ORIGIN } from './config';
 import { createToolCommands } from './commands';
 import { toMetrics } from './measurements';
 import type { OhifMeasurementLike } from './measurements';
-import type { MeasurementAddedEvent, ViewerReadyEvent } from './contract/messages';
+import { createThrottledEmitter } from './throttle';
+import type {
+  MeasurementAddedEvent,
+  MeasurementUpdatedEvent,
+  Metrics,
+  ViewerReadyEvent,
+} from './contract/messages';
 
 /**
  * The bridge between OHIF and the embedding host-app (C-3.2, C-3.4).
  *
  * It owns the whole postMessage surface of the viewer: OHIF itself has none, so every listener,
  * every origin check and every outgoing event lives here: the handshake (VIEWER_READY), the
- * incoming host commands (delegated to commands.ts) and MEASUREMENT_ADDED. MEASUREMENT_UPDATED /
- * REMOVED are bonus slices.
+ * incoming host commands (delegated to commands.ts) and MEASUREMENT_ADDED and
+ * MEASUREMENT_UPDATED. MEASUREMENT_REMOVED is a bonus slice of its own.
  */
 
 type Unsubscribe = () => void;
@@ -58,7 +64,9 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
    * is nothing to talk to — window.parent === window when the viewer is opened directly, and
    * posting to ourselves would only bounce off our own origin check.
    */
-  const postToHost = (message: ViewerReadyEvent | MeasurementAddedEvent): boolean => {
+  const postToHost = (
+    message: ViewerReadyEvent | MeasurementAddedEvent | MeasurementUpdatedEvent
+  ): boolean => {
     if (window.parent === window) {
       console.debug(`[scoring-bridge] not embedded in an iframe -> skip ${message.type}`);
       return false;
@@ -110,6 +118,94 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
      */
     const reportedUids = new Set<string>();
 
+    /**
+     * S-5.1 — live update while a handle is dragged.
+     *
+     * Q-4 / P-6, echo loop. Nothing in this bridge reacts to a MEASUREMENT_* event, and nothing on
+     * the host side can cause one: the host's only commands are ACTIVATE_TOOL / DEACTIVATE_TOOL,
+     * which arm a tool and never touch an existing annotation. The loop point in OHIF is
+     * `measurementService.update()` (MeasurementService.ts:365-386), which re-broadcasts
+     * MEASUREMENT_UPDATED — we never call it, and neither does any command path in commands.ts.
+     * So an UPDATED can only originate from the user dragging in the viewer; it carries no
+     * `causedBy` (A-10) because there is no host request to attribute it to. If a future command
+     * ever mutates a measurement, `causedBy` is the place to mark it and that command's handler is
+     * the place the loop would have to be cut.
+     *
+     * Volume, not loops, is the real hazard here: UPDATED fires once per ANNOTATION_MODIFIED, i.e.
+     * per drag frame, so the stream is throttled per measurement uid (throttle.ts) to one post per
+     * UPDATE_INTERVAL_MS, always carrying the latest value and always with a trailing emit so the
+     * value the handle was released on reaches the host.
+     */
+    const UPDATE_INTERVAL_MS = 100;
+
+    /** Last metrics actually posted per uid, serialised — used to skip no-op corrections. */
+    const lastSentMetrics = new Map<string, string>();
+
+    const updateEmitter = createThrottledEmitter<{ toolName: string; metrics: Metrics }>(
+      UPDATE_INTERVAL_MS,
+      (uid, { toolName, metrics }) => {
+        const event: MeasurementUpdatedEvent = {
+          version: 1,
+          type: 'MEASUREMENT_UPDATED',
+          measurementUid: uid,
+          toolName,
+          metrics,
+        };
+
+        if (!postToHost(event)) {
+          return;
+        }
+
+        lastSentMetrics.set(uid, JSON.stringify(metrics));
+        console.debug('[scoring-bridge] MEASUREMENT_UPDATED sent', event);
+      }
+    );
+    disposers.push(() => updateEmitter.dispose());
+
+    /**
+     * The one-frame-late `cachedStats` correction (see the note further down about ADDED being
+     * broadcast synchronously from the mouse-up). A short moment after ADDED we re-read the
+     * measurement from the service and, if OHIF's render pass has since settled on a different
+     * area, push that through the same throttled channel as a normal UPDATED. If the value is
+     * already correct — the usual case — nothing is sent.
+     */
+    const ADDED_CORRECTION_DELAY_MS = 150;
+    const correctionTimers = new Set<ReturnType<typeof setTimeout>>();
+    disposers.push(() => {
+      // Q-5: a timer outliving the bridge would post through a disposed channel.
+      correctionTimers.forEach(timer => clearTimeout(timer));
+      correctionTimers.clear();
+      lastSentMetrics.clear();
+    });
+
+    const scheduleAddedCorrection = (uid: string): void => {
+      const timer = setTimeout(() => {
+        correctionTimers.delete(timer);
+
+        // MeasurementService.ts:198 — read-back by uid.
+        const fresh = measurementService.getMeasurement(uid) as OhifMeasurementLike | undefined;
+
+        if (!fresh) {
+          return;
+        }
+
+        const metrics = toMetrics(fresh);
+
+        if (!metrics || JSON.stringify(metrics) === lastSentMetrics.get(uid)) {
+          return;
+        }
+
+        console.debug(`[scoring-bridge] correcting late cachedStats for ${uid}`);
+        updateEmitter.push(uid, {
+          toolName: typeof fresh.toolName === 'string' ? fresh.toolName : '',
+          metrics,
+        });
+      }, ADDED_CORRECTION_DELAY_MS);
+
+      correctionTimers.add(timer);
+    };
+
+
     const onMeasurementAdded = ({ measurement }: { measurement: OhifMeasurementLike }): void => {
       const uid = measurement?.uid;
 
@@ -156,9 +252,13 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
       }
 
       reportedUids.add(uid);
+      lastSentMetrics.set(uid, JSON.stringify(metrics));
 
       if (event.rowId !== null) {
         uidToRowId.set(uid, event.rowId);
+        // S-5.1: only a measurement bound to a row can be updated in the form, so only that one
+        // is worth correcting.
+        scheduleAddedCorrection(uid);
       }
 
       console.debug('[scoring-bridge] MEASUREMENT_ADDED sent', event);
@@ -177,12 +277,49 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
     );
     disposers.push(() => subscription.unsubscribe());
 
-    // MEASUREMENT_UPDATED is deliberately not handled here: it fires once per ANNOTATION_MODIFIED,
-    // i.e. per drag frame, and needs throttling plus the echo guard of A-10. It belongs to the
-    // bonus slice S-5.1 together with MEASUREMENT_REMOVED (S-5.2), which will resolve its row
-    // through uidToRowId.
-    //
-    // Measured while verifying this slice, and the reason that slice matters beyond "live edits":
+    const onMeasurementUpdated = ({ measurement }: { measurement: OhifMeasurementLike }): void => {
+      const uid = measurement?.uid;
+
+      if (typeof uid !== 'string' || uid.length === 0) {
+        return;
+      }
+
+      // Only measurements the host knows about are worth updating. A measurement drawn without
+      // arming was delivered with `rowId: null` and never entered uidToRowId, so the host has no
+      // row to update — sending its drag frames would be noise the host can only drop. The same
+      // filter keeps annotations restored from elsewhere out of the stream.
+      if (!uidToRowId.has(uid)) {
+        return;
+      }
+
+      const metrics = toMetrics(measurement);
+
+      if (!metrics) {
+        // Mid-drag frames can legitimately carry NaN stats while cornerstone recomputes them;
+        // toMetrics already warned and the next frame carries the real value.
+        return;
+      }
+
+      // Not every ANNOTATION_MODIFIED changes the numbers — selecting or deselecting an annotation
+      // also fires one. Re-sending a value the host already has is pure noise, so it is dropped
+      // here rather than after the throttle, which keeps the trailing emit meaningful.
+      if (JSON.stringify(metrics) === lastSentMetrics.get(uid)) {
+        return;
+      }
+
+      updateEmitter.push(uid, {
+        toolName: typeof measurement.toolName === 'string' ? measurement.toolName : '',
+        metrics,
+      });
+    };
+
+    const updateSubscription = measurementService.subscribe(
+      measurementService.EVENTS.MEASUREMENT_UPDATED,
+      onMeasurementUpdated
+    );
+    disposers.push(() => updateSubscription.unsubscribe());
+
+    // Why the post-ADDED correction above exists, measured while verifying the ADDED slice:
     // cornerstone fills `cachedStats` in its annotation render pass, which is scheduled, while
     // MEASUREMENT_ADDED is broadcast synchronously from the mouse-up. If the last pointer move and
     // the release land in the same frame (a fast flick, or synthetic input), the area read here is
