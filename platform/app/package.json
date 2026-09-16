@@ -64,6 +64,7 @@
     "@ohif/extension-dicom-microscopy": "3.12.17",
     "@ohif/extension-dicom-pdf": "3.12.17",
     "@ohif/extension-dicom-video": "3.12.17",
+    "@ohif/extension-scoring-bridge": "0.0.1",
     "@ohif/extension-test": "3.12.17",
     "@ohif/extension-ultrasound-pleura-bline": "3.12.17",
     "@ohif/i18n": "3.12.17",
