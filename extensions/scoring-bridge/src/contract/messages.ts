@@ -67,10 +67,7 @@ export interface FocusMeasurementCommand {
 }
 
 export type HostCommand =
-  | ActivateToolCommand
-  | DeactivateToolCommand
-  | RemoveMeasurementCommand
-  | FocusMeasurementCommand;
+  ActivateToolCommand | DeactivateToolCommand | RemoveMeasurementCommand | FocusMeasurementCommand;
 
 // viewer -> host
 
@@ -115,10 +112,7 @@ export interface MeasurementRemovedEvent {
 }
 
 export type ViewerEvent =
-  | ViewerReadyEvent
-  | MeasurementAddedEvent
-  | MeasurementUpdatedEvent
-  | MeasurementRemovedEvent;
+  ViewerReadyEvent | MeasurementAddedEvent | MeasurementUpdatedEvent | MeasurementRemovedEvent;
 
 export type BridgeMessage = HostCommand | ViewerEvent;
 
@@ -139,118 +133,87 @@ export const VIEWER_EVENT_TYPES = [
 const UNIT_VALUES: readonly Unit[] = ['mm2', 'px2', 'mm', 'px'];
 const TOOL_NAME_VALUES: readonly ToolName[] = ['EllipticalROI', 'RectangleROI', 'Length'];
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0;
-}
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === 'string' && value.length > 0;
 
-function isUnit(value: unknown): value is Unit {
-  return typeof value === 'string' && (UNIT_VALUES as readonly string[]).includes(value);
-}
+const isUnit = (value: unknown): value is Unit =>
+  typeof value === 'string' && (UNIT_VALUES as readonly string[]).includes(value);
 
-function isToolName(value: unknown): value is ToolName {
-  return typeof value === 'string' && (TOOL_NAME_VALUES as readonly string[]).includes(value);
-}
+const isToolName = (value: unknown): value is ToolName =>
+  typeof value === 'string' && (TOOL_NAME_VALUES as readonly string[]).includes(value);
 
-function isMetric(value: unknown): value is Metric {
-  return (
-    isRecord(value) &&
-    typeof value.value === 'number' &&
-    Number.isFinite(value.value) &&
-    isUnit(value.unit)
-  );
-}
+const isMetric = (value: unknown): value is Metric =>
+  isRecord(value) &&
+  typeof value.value === 'number' &&
+  Number.isFinite(value.value) &&
+  isUnit(value.unit);
 
-function isMetrics(value: unknown): value is Metrics {
+const isMetrics = (value: unknown): value is Metrics => {
   if (!isRecord(value)) {
     return false;
   }
   return Object.values(value).every(isMetric);
-}
+};
 
-function hasVersion1(value: Record<string, unknown>): boolean {
-  return value.version === 1;
-}
+const hasVersion1 = (value: Record<string, unknown>): boolean => value.version === 1;
 
 // These return plain booleans rather than type predicates: interfaces without an index
 // signature are not assignable to `Record<string, unknown>`, so a predicate here would not
 // type-check. The narrowing to the concrete message type happens at the call site instead.
 
-function isActivateToolCommand(value: Record<string, unknown>): boolean {
-  return (
-    value.type === 'ACTIVATE_TOOL' &&
-    isNonEmptyString(value.requestId) &&
-    isNonEmptyString(value.rowId) &&
-    isToolName(value.toolName)
-  );
-}
+const isActivateToolCommand = (value: Record<string, unknown>): boolean =>
+  value.type === 'ACTIVATE_TOOL' &&
+  isNonEmptyString(value.requestId) &&
+  isNonEmptyString(value.rowId) &&
+  isToolName(value.toolName);
 
-function isDeactivateToolCommand(value: Record<string, unknown>): boolean {
-  return (
-    value.type === 'DEACTIVATE_TOOL' &&
-    isNonEmptyString(value.requestId) &&
-    isNonEmptyString(value.rowId)
-  );
-}
+const isDeactivateToolCommand = (value: Record<string, unknown>): boolean =>
+  value.type === 'DEACTIVATE_TOOL' &&
+  isNonEmptyString(value.requestId) &&
+  isNonEmptyString(value.rowId);
 
-function isRemoveMeasurementCommand(value: Record<string, unknown>): boolean {
-  return (
-    value.type === 'REMOVE_MEASUREMENT' &&
-    isNonEmptyString(value.requestId) &&
-    isNonEmptyString(value.rowId) &&
-    isNonEmptyString(value.measurementUid)
-  );
-}
+const isRemoveMeasurementCommand = (value: Record<string, unknown>): boolean =>
+  value.type === 'REMOVE_MEASUREMENT' &&
+  isNonEmptyString(value.requestId) &&
+  isNonEmptyString(value.rowId) &&
+  isNonEmptyString(value.measurementUid);
 
-function isFocusMeasurementCommand(value: Record<string, unknown>): boolean {
-  return (
-    value.type === 'FOCUS_MEASUREMENT' &&
-    isNonEmptyString(value.requestId) &&
-    isNonEmptyString(value.rowId) &&
-    isNonEmptyString(value.measurementUid)
-  );
-}
+const isFocusMeasurementCommand = (value: Record<string, unknown>): boolean =>
+  value.type === 'FOCUS_MEASUREMENT' &&
+  isNonEmptyString(value.requestId) &&
+  isNonEmptyString(value.rowId) &&
+  isNonEmptyString(value.measurementUid);
 
-function isViewerReadyEvent(value: Record<string, unknown>): boolean {
-  return value.type === 'VIEWER_READY' && typeof value.viewerVersion === 'string';
-}
+const isViewerReadyEvent = (value: Record<string, unknown>): boolean =>
+  value.type === 'VIEWER_READY' && typeof value.viewerVersion === 'string';
 
-function isMeasurementAddedEvent(value: Record<string, unknown>): boolean {
-  return (
-    value.type === 'MEASUREMENT_ADDED' &&
-    (value.rowId === null || isNonEmptyString(value.rowId)) &&
-    isNonEmptyString(value.measurementUid) &&
-    typeof value.toolName === 'string' &&
-    isMetrics(value.metrics) &&
-    (value.causedBy === undefined || typeof value.causedBy === 'string')
-  );
-}
+const isMeasurementAddedEvent = (value: Record<string, unknown>): boolean =>
+  value.type === 'MEASUREMENT_ADDED' &&
+  (value.rowId === null || isNonEmptyString(value.rowId)) &&
+  isNonEmptyString(value.measurementUid) &&
+  typeof value.toolName === 'string' &&
+  isMetrics(value.metrics) &&
+  (value.causedBy === undefined || typeof value.causedBy === 'string');
 
-function isMeasurementUpdatedEvent(value: Record<string, unknown>): boolean {
-  return (
-    value.type === 'MEASUREMENT_UPDATED' &&
-    isNonEmptyString(value.measurementUid) &&
-    typeof value.toolName === 'string' &&
-    isMetrics(value.metrics) &&
-    (value.causedBy === undefined || typeof value.causedBy === 'string') &&
-    // rowId is not part of this event; null is reserved to mean "unarmed" on ADDED only, so a
-    // null rowId here is rejected rather than silently accepted as a harmless extra field.
-    value.rowId !== null
-  );
-}
+const isMeasurementUpdatedEvent = (value: Record<string, unknown>): boolean =>
+  value.type === 'MEASUREMENT_UPDATED' &&
+  isNonEmptyString(value.measurementUid) &&
+  typeof value.toolName === 'string' &&
+  isMetrics(value.metrics) &&
+  (value.causedBy === undefined || typeof value.causedBy === 'string') &&
+  // rowId is not part of this event; null is reserved to mean "unarmed" on ADDED only, so a
+  // null rowId here is rejected rather than silently accepted as a harmless extra field.
+  value.rowId !== null;
 
-function isMeasurementRemovedEvent(value: Record<string, unknown>): boolean {
-  return (
-    value.type === 'MEASUREMENT_REMOVED' &&
-    isNonEmptyString(value.measurementUid) &&
-    (value.causedBy === undefined || typeof value.causedBy === 'string')
-  );
-}
+const isMeasurementRemovedEvent = (value: Record<string, unknown>): boolean =>
+  value.type === 'MEASUREMENT_REMOVED' &&
+  isNonEmptyString(value.measurementUid) &&
+  (value.causedBy === undefined || typeof value.causedBy === 'string');
 
-export function isHostCommand(value: unknown): value is HostCommand {
+export const isHostCommand = (value: unknown): value is HostCommand => {
   if (!isRecord(value) || !hasVersion1(value)) {
     return false;
   }
@@ -263,9 +226,9 @@ export function isHostCommand(value: unknown): value is HostCommand {
     isRemoveMeasurementCommand(value) ||
     isFocusMeasurementCommand(value)
   );
-}
+};
 
-export function isViewerEvent(value: unknown): value is ViewerEvent {
+export const isViewerEvent = (value: unknown): value is ViewerEvent => {
   if (!isRecord(value) || !hasVersion1(value)) {
     return false;
   }
@@ -278,4 +241,4 @@ export function isViewerEvent(value: unknown): value is ViewerEvent {
     isMeasurementUpdatedEvent(value) ||
     isMeasurementRemovedEvent(value)
   );
-}
+};

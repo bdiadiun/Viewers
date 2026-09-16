@@ -21,7 +21,30 @@
 /** Build-time constant; falsy only if the bundle was built without the DefinePlugin config. */
 const VERSION_NUMBER = process.env.VERSION_NUMBER ?? '';
 
-const versionOverlayItem = {
+/**
+ * Bottom-right is the least crowded corner in the longitudinal mode: cornerstone puts
+ * StudyDate + SeriesDescription top-left, W/L + zoom bottom-left and only InstanceNumber
+ * bottom-right (extensions/cornerstone/src/customizations/viewportOverlayCustomization.tsx).
+ * Top-right is empty in that list but is where the viewport action corner menus live, so
+ * the version would sit under them.
+ */
+const VERSION_OVERLAY_CUSTOMIZATION_ID = 'viewportOverlay.bottomRight';
+
+/** The fields of an `ohif.overlayItem` customization this module sets. */
+interface OverlayItemCustomization {
+  id: string;
+  inheritsFrom: string;
+  title: string;
+  contentF: () => string | null;
+}
+
+/** One entry of an extension's customization module, as CustomizationService.init() reads it. */
+export interface CustomizationModuleEntry {
+  name: string;
+  value: Record<string, { $push: OverlayItemCustomization[] }>;
+}
+
+const versionOverlayItem: OverlayItemCustomization = {
   id: 'scoringBridgeVersion',
   inheritsFrom: 'ohif.overlayItem',
   title: 'OHIF viewer version',
@@ -30,22 +53,16 @@ const versionOverlayItem = {
   contentF: () => (VERSION_NUMBER ? `OHIF ${VERSION_NUMBER}` : null),
 };
 
-function getCustomizationModule() {
-  return [
-    {
-      name: 'default',
-      value: {
-        // Bottom-right is the least crowded corner in the longitudinal mode: cornerstone puts
-        // StudyDate + SeriesDescription top-left, W/L + zoom bottom-left and only InstanceNumber
-        // bottom-right (extensions/cornerstone/src/customizations/viewportOverlayCustomization.tsx).
-        // Top-right is empty in that list but is where the viewport action corner menus live, so
-        // the version would sit under them.
-        'viewportOverlay.bottomRight': {
-          $push: [versionOverlayItem],
-        },
+const getCustomizationModule = (): CustomizationModuleEntry[] => [
+  {
+    name: 'default',
+    value: {
+      [VERSION_OVERLAY_CUSTOMIZATION_ID]: {
+        $push: [versionOverlayItem],
       },
     },
-  ];
-}
+  },
+];
 
+// Default export: the extension entry (index.tsx) imports it the way OHIF extensions do.
 export default getCustomizationModule;

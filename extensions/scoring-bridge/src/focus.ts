@@ -1,3 +1,4 @@
+import { LOG_PREFIX } from './config';
 import type { FocusMeasurementCommand } from './contract/messages';
 
 /**
@@ -26,7 +27,7 @@ export interface FocusCommands {
   handleFocus: (command: FocusMeasurementCommand) => void;
 }
 
-export function createFocusCommands({ servicesManager }: FocusCommandsDeps): FocusCommands {
+export const createFocusCommands = ({ servicesManager }: FocusCommandsDeps): FocusCommands => {
   const { measurementService, viewportGridService } = servicesManager.services;
 
   const handleFocus = (command: FocusMeasurementCommand): void => {
@@ -34,7 +35,7 @@ export function createFocusCommands({ servicesManager }: FocusCommandsDeps): Foc
 
     if (!measurementService || !viewportGridService) {
       console.warn(
-        `[scoring-bridge] FOCUS_MEASUREMENT ${requestId}: measurement/viewportGrid service unavailable; ignored`
+        `${LOG_PREFIX} FOCUS_MEASUREMENT ${requestId}: measurement/viewportGrid service unavailable; ignored`
       );
       return;
     }
@@ -45,7 +46,7 @@ export function createFocusCommands({ servicesManager }: FocusCommandsDeps): Foc
     // console honest. getMeasurement: MeasurementService.ts:198.
     if (!measurementService.getMeasurement(measurementUid)) {
       console.debug(
-        `[scoring-bridge] FOCUS_MEASUREMENT ${requestId}: measurement ${measurementUid} (row ${rowId}) is unknown; nothing to focus`
+        `${LOG_PREFIX} FOCUS_MEASUREMENT ${requestId}: measurement ${measurementUid} (row ${rowId}) is unknown; nothing to focus`
       );
       return;
     }
@@ -75,9 +76,9 @@ export function createFocusCommands({ servicesManager }: FocusCommandsDeps): Foc
     measurementService.jumpToMeasurement(viewportId, measurementUid);
 
     console.debug(
-      `[scoring-bridge] FOCUS_MEASUREMENT ${requestId}: jumped viewport ${viewportId} to ${measurementUid} (row ${rowId})`
+      `${LOG_PREFIX} FOCUS_MEASUREMENT ${requestId}: jumped viewport ${viewportId} to ${measurementUid} (row ${rowId})`
     );
   };
 
   return { handleFocus };
-}
+};

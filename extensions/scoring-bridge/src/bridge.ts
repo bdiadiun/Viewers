@@ -1,5 +1,5 @@
-import { HOST_ORIGIN } from './config';
-import { createToolCommands } from './commands';
+import { HOST_ORIGIN, LOG_PREFIX } from './config';
+import { createToolCommands, DisarmReason } from './commands';
 import { createRemovalCommands } from './removals';
 import { createFocusCommands } from './focus';
 import { toMetrics } from './measurements';
@@ -45,7 +45,22 @@ export interface Bridge {
  */
 const VIEWER_VERSION = process.env.VERSION_NUMBER ?? 'unknown';
 
-export function createBridge({ servicesManager, commandsManager }: BridgeDeps): Bridge {
+/**
+ * S-5.1: at most one MEASUREMENT_UPDATED per measurement per this many milliseconds while a handle
+ * is dragged. 100 ms is ten updates a second: the form's number still follows the drag without
+ * visible lag, while a 60 fps drag (one ANNOTATION_MODIFIED per frame) is cut about six-fold.
+ */
+const UPDATE_INTERVAL_MS = 100;
+
+/**
+ * Delay of the post-ADDED `cachedStats` re-read (see scheduleAddedCorrection). Cornerstone settles
+ * the stats in a scheduled render pass a few frames after mouse-up; 150 ms is roughly nine frames
+ * at 60 fps, comfortably past that pass, and still short enough that a corrected value reaches the
+ * form before the user looks at it.
+ */
+const ADDED_CORRECTION_DELAY_MS = 150;
+
+export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): Bridge => {
   const { measurementService, toolGroupService } = servicesManager.services;
 
   const disposers: Unsubscribe[] = [];
@@ -99,7 +114,7 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
       | MeasurementRemovedEvent
   ): boolean => {
     if (window.parent === window) {
-      console.debug(`[scoring-bridge] not embedded in an iframe -> skip ${message.type}`);
+      console.debug(`${LOG_PREFIX} not embedded in an iframe -> skip ${message.type}`);
       return false;
     }
 
@@ -118,7 +133,7 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
       if (!foreignOriginLogged) {
         foreignOriginLogged = true;
         console.debug(
-          `[scoring-bridge] ignoring message from foreign origin ${event.origin}; expected ${HOST_ORIGIN}`
+          `${LOG_PREFIX} ignoring message from foreign origin ${event.origin}; expected ${HOST_ORIGIN}`
         );
       }
       return;
@@ -167,7 +182,6 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
      * UPDATE_INTERVAL_MS, always carrying the latest value and always with a trailing emit so the
      * value the handle was released on reaches the host.
      */
-    const UPDATE_INTERVAL_MS = 100;
 
     /** Last metrics actually posted per uid, serialised — used to skip no-op corrections. */
     const lastSentMetrics = new Map<string, string>();
@@ -188,7 +202,7 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
         }
 
         lastSentMetrics.set(uid, JSON.stringify(metrics));
-        console.debug('[scoring-bridge] MEASUREMENT_UPDATED sent', event);
+        console.debug(`${LOG_PREFIX} MEASUREMENT_UPDATED sent`, event);
       }
     );
     disposers.push(() => updateEmitter.dispose());
@@ -200,7 +214,6 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
      * area, push that through the same throttled channel as a normal UPDATED. If the value is
      * already correct — the usual case — nothing is sent.
      */
-    const ADDED_CORRECTION_DELAY_MS = 150;
     const correctionTimers = new Set<ReturnType<typeof setTimeout>>();
     disposers.push(() => {
       // Q-5: a timer outliving the bridge would post through a disposed channel.
@@ -226,7 +239,7 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
           return;
         }
 
-        console.debug(`[scoring-bridge] correcting late cachedStats for ${uid}`);
+        console.debug(`${LOG_PREFIX} correcting late cachedStats for ${uid}`);
         updateEmitter.push(uid, {
           toolName: typeof fresh.toolName === 'string' ? fresh.toolName : '',
           metrics,
@@ -236,17 +249,16 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
       correctionTimers.add(timer);
     };
 
-
     const onMeasurementAdded = ({ measurement }: { measurement: OhifMeasurementLike }): void => {
       const uid = measurement?.uid;
 
       if (typeof uid !== 'string' || uid.length === 0) {
-        console.warn('[scoring-bridge] MEASUREMENT_ADDED without a uid; ignored', measurement);
+        console.warn(`${LOG_PREFIX} MEASUREMENT_ADDED without a uid; ignored`, measurement);
         return;
       }
 
       if (reportedUids.has(uid)) {
-        console.debug(`[scoring-bridge] MEASUREMENT_ADDED for ${uid} already handled; ignored`);
+        console.debug(`${LOG_PREFIX} MEASUREMENT_ADDED for ${uid} already handled; ignored`);
         return;
       }
 
@@ -256,9 +268,7 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
         // toMetrics already said why. Nothing is posted: a MEASUREMENT_ADDED without a usable
         // value would leave the row stuck between "drawing" and "done" (C-4.3.6). The arming is
         // left in place so the user can simply draw again.
-        console.warn(
-          `[scoring-bridge] no metrics for measurement ${uid}; nothing sent to the host`
-        );
+        console.warn(`${LOG_PREFIX} no metrics for measurement ${uid}; nothing sent to the host`);
         return;
       }
 
@@ -292,13 +302,13 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
         scheduleAddedCorrection(uid);
       }
 
-      console.debug('[scoring-bridge] MEASUREMENT_ADDED sent', event);
+      console.debug(`${LOG_PREFIX} MEASUREMENT_ADDED sent`, event);
 
       // C-4.3.6: the tool deactivates by itself once the value is on its way, putting back the
       // tool the user had before arming. Done after posting so a failing restore cannot swallow
       // the event.
       if (armed) {
-        toolCommands.disarm('measurement received');
+        toolCommands.disarm(DisarmReason.MeasurementReceived);
       }
     };
 
@@ -395,7 +405,7 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
       const uid = typeof measurement === 'string' ? measurement : undefined;
 
       if (uid === undefined || uid.length === 0) {
-        console.warn('[scoring-bridge] MEASUREMENT_REMOVED without a uid; ignored', measurement);
+        console.warn(`${LOG_PREFIX} MEASUREMENT_REMOVED without a uid; ignored`, measurement);
         return;
       }
 
@@ -414,7 +424,7 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
         return;
       }
 
-      console.debug('[scoring-bridge] MEASUREMENT_REMOVED sent', event);
+      console.debug(`${LOG_PREFIX} MEASUREMENT_REMOVED sent`, event);
     };
 
     const removedSubscription = measurementService.subscribe(
@@ -431,7 +441,7 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
     // the final value. Waiting a fixed number of frames here would be a guess, so the value is
     // taken as OHIF has it at completion and the correction is left to the UPDATED stream.
   } else {
-    console.warn('[scoring-bridge] measurementService unavailable; measurements will not be seen');
+    console.warn(`${LOG_PREFIX} measurementService unavailable; measurements will not be seen`);
   }
 
   // --- outgoing handshake ------------------------------------------------------------------
@@ -453,7 +463,7 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
     }
 
     readySent = true;
-    console.debug('[scoring-bridge] VIEWER_READY sent to', HOST_ORIGIN);
+    console.debug(`${LOG_PREFIX} VIEWER_READY sent to`, HOST_ORIGIN);
   };
 
   // When to announce readiness (C-4.4.1: "viewer loaded and ready for commands").
@@ -478,7 +488,7 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
     // Risk accepted and made visible: without the cornerstone extension there is no tool group
     // signal at all, so we fall back to announcing readiness immediately. Commands may then
     // arrive before a viewport exists.
-    console.warn('[scoring-bridge] toolGroupService unavailable; sending VIEWER_READY immediately');
+    console.warn(`${LOG_PREFIX} toolGroupService unavailable; sending VIEWER_READY immediately`);
     postViewerReady();
   }
 
@@ -487,14 +497,14 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
     dispose: () => {
       // Q-5: the armed state is part of the cleanup. Restore the user's tool before the listeners
       // go away, otherwise the viewer would be left waiting for a drawing nobody will report.
-      toolCommands.disarm('bridge dispose');
+      toolCommands.disarm(DisarmReason.BridgeDispose);
 
       while (disposers.length > 0) {
         const disposer = disposers.pop();
         try {
           disposer?.();
         } catch (error) {
-          console.warn('[scoring-bridge] disposer failed', error);
+          console.warn(`${LOG_PREFIX} disposer failed`, error);
         }
       }
       // Q-5: the correlation map is bridge state, not page state; a disposed bridge must not leave
@@ -503,4 +513,4 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
       readySent = false;
     },
   };
-}
+};
