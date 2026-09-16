@@ -26,6 +26,12 @@ export interface ThrottledEmitter<T> {
   push(key: string, value: T): void;
   /** Emits the pending value of `key` (or of every key when omitted) right away. */
   flush(key?: string): void;
+  /**
+   * Forgets `key` without emitting: its pending value and its trailing timer are dropped.
+   * Used when the measurement behind the key ceases to exist (S-5.2): a trailing
+   * MEASUREMENT_UPDATED for an annotation the host has just removed would resurrect a deleted row.
+   */
+  discard(key: string): void;
   /** Q-5: cancels every timer and drops every pending value. */
   dispose(): void;
 }
@@ -119,6 +125,22 @@ export function createThrottledEmitter<T>(
           emitNow(k, state, pending.value);
         }
       }
+    },
+
+    discard(key: string): void {
+      const state = states.get(key);
+
+      if (!state) {
+        return;
+      }
+
+      if (state.timer !== null) {
+        clearTimeout(state.timer);
+        state.timer = null;
+      }
+
+      state.pending = null;
+      states.delete(key);
     },
 
     dispose(): void {

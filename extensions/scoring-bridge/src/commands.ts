@@ -1,5 +1,10 @@
 import { isHostCommand } from './contract/messages';
-import type { ActivateToolCommand, DeactivateToolCommand, HostCommand } from './contract/messages';
+import type {
+  ActivateToolCommand,
+  DeactivateToolCommand,
+  HostCommand,
+  RemoveMeasurementCommand,
+} from './contract/messages';
 
 /**
  * Host command handling: ACTIVATE_TOOL / DEACTIVATE_TOOL (C-4.3.3, C-4.4.1, Q-3, A-4, A-8, P-7).
@@ -30,6 +35,14 @@ export interface ArmedState {
 export interface ToolCommandsDeps {
   servicesManager: AppTypes.ServicesManager;
   commandsManager: AppTypes.CommandsManager;
+  /**
+   * REMOVE_MEASUREMENT is dispatched here like every other host command, but it is about an
+   * annotation rather than about a tool, and it needs state this module has no business owning
+   * (the parked requestIds of decision A-10). It is therefore injected; the implementation lives
+   * in removals.ts. Passed as a function so the whole postMessage surface still has exactly one
+   * entry point — handleMessage — with one origin check and one contract guard in front of it.
+   */
+  onRemoveMeasurement: (command: RemoveMeasurementCommand) => void;
 }
 
 export interface ToolCommands {
@@ -46,6 +59,7 @@ export interface ToolCommands {
 export function createToolCommands({
   servicesManager,
   commandsManager,
+  onRemoveMeasurement,
 }: ToolCommandsDeps): ToolCommands {
   const { toolGroupService } = servicesManager.services;
 
@@ -164,8 +178,15 @@ export function createToolCommands({
       case 'DEACTIVATE_TOOL':
         onDeactivateTool(command);
         return;
+      case 'REMOVE_MEASUREMENT':
+        // S-5.2 / P-6. Deliberately *not* touching the armed state: arming is about which tool sits
+        // on the mouse and which row the next drawing belongs to, and deleting an existing
+        // annotation says nothing about either — even when the deleted annotation belongs to the
+        // row that is currently armed, the user is still waiting to draw for that row.
+        onRemoveMeasurement(command);
+        return;
       default:
-        // Unreachable while HostCommand has exactly these two members; kept so that adding a
+        // Unreachable while HostCommand has exactly these three members; kept so that adding a
         // command to the contract without handling it here fails the type check.
         console.warn('[scoring-bridge] unhandled host command', command);
     }

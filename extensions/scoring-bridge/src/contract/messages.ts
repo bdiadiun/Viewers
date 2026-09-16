@@ -13,6 +13,9 @@
 // Canon Q-7 explicitly allows a copied file with this explanation in place of a shared
 // package for that side.
 
+// CONTRACT_VERSION stays 1: F-15 (two-way deletion, S-5.2) only adds new message shapes
+// (RemoveMeasurementCommand, MeasurementRemovedEvent) and new entries in the *_TYPES lists;
+// no existing shape is changed, so wire-compatible peers do not need a version bump.
 export const CONTRACT_VERSION = 1 as const;
 
 // Normalised spelling used on the wire; the display layer renders mm² / px² for humans.
@@ -46,7 +49,15 @@ export interface DeactivateToolCommand {
   rowId: string;
 }
 
-export type HostCommand = ActivateToolCommand | DeactivateToolCommand;
+export interface RemoveMeasurementCommand {
+  version: 1;
+  type: 'REMOVE_MEASUREMENT';
+  requestId: string;
+  rowId: string;
+  measurementUid: string;
+}
+
+export type HostCommand = ActivateToolCommand | DeactivateToolCommand | RemoveMeasurementCommand;
 
 // viewer -> host
 
@@ -79,13 +90,33 @@ export interface MeasurementUpdatedEvent {
   causedBy?: string;
 }
 
-export type ViewerEvent = ViewerReadyEvent | MeasurementAddedEvent | MeasurementUpdatedEvent;
+export interface MeasurementRemovedEvent {
+  version: 1;
+  type: 'MEASUREMENT_REMOVED';
+  measurementUid: string;
+  // Echoes the requestId of the REMOVE_MEASUREMENT command that caused this event, so the
+  // host can ignore events it provoked itself (echo-loop protection, decision A-10). Absent
+  // when the deletion originated in the viewer (e.g. via the OHIF toolbar), which is exactly
+  // the case the host needs to hear about to clear the matching row (S-5.2).
+  causedBy?: string;
+}
+
+export type ViewerEvent =
+  | ViewerReadyEvent
+  | MeasurementAddedEvent
+  | MeasurementUpdatedEvent
+  | MeasurementRemovedEvent;
 
 export type BridgeMessage = HostCommand | ViewerEvent;
 
-export const HOST_COMMAND_TYPES = ['ACTIVATE_TOOL', 'DEACTIVATE_TOOL'] as const;
+export const HOST_COMMAND_TYPES = ['ACTIVATE_TOOL', 'DEACTIVATE_TOOL', 'REMOVE_MEASUREMENT'] as const;
 
-export const VIEWER_EVENT_TYPES = ['VIEWER_READY', 'MEASUREMENT_ADDED', 'MEASUREMENT_UPDATED'] as const;
+export const VIEWER_EVENT_TYPES = [
+  'VIEWER_READY',
+  'MEASUREMENT_ADDED',
+  'MEASUREMENT_UPDATED',
+  'MEASUREMENT_REMOVED',
+] as const;
 
 const UNIT_VALUES: readonly Unit[] = ['mm2', 'px2', 'mm', 'px'];
 const TOOL_NAME_VALUES: readonly ToolName[] = ['EllipticalROI', 'RectangleROI', 'Length'];
@@ -147,6 +178,15 @@ function isDeactivateToolCommand(value: Record<string, unknown>): boolean {
   );
 }
 
+function isRemoveMeasurementCommand(value: Record<string, unknown>): boolean {
+  return (
+    value.type === 'REMOVE_MEASUREMENT' &&
+    isNonEmptyString(value.requestId) &&
+    isNonEmptyString(value.rowId) &&
+    isNonEmptyString(value.measurementUid)
+  );
+}
+
 function isViewerReadyEvent(value: Record<string, unknown>): boolean {
   return value.type === 'VIEWER_READY' && typeof value.viewerVersion === 'string';
 }
@@ -175,6 +215,14 @@ function isMeasurementUpdatedEvent(value: Record<string, unknown>): boolean {
   );
 }
 
+function isMeasurementRemovedEvent(value: Record<string, unknown>): boolean {
+  return (
+    value.type === 'MEASUREMENT_REMOVED' &&
+    isNonEmptyString(value.measurementUid) &&
+    (value.causedBy === undefined || typeof value.causedBy === 'string')
+  );
+}
+
 export function isHostCommand(value: unknown): value is HostCommand {
   if (!isRecord(value) || !hasVersion1(value)) {
     return false;
@@ -182,7 +230,9 @@ export function isHostCommand(value: unknown): value is HostCommand {
   if (!(HOST_COMMAND_TYPES as readonly string[]).includes(value.type as string)) {
     return false;
   }
-  return isActivateToolCommand(value) || isDeactivateToolCommand(value);
+  return (
+    isActivateToolCommand(value) || isDeactivateToolCommand(value) || isRemoveMeasurementCommand(value)
+  );
 }
 
 export function isViewerEvent(value: unknown): value is ViewerEvent {
@@ -193,6 +243,9 @@ export function isViewerEvent(value: unknown): value is ViewerEvent {
     return false;
   }
   return (
-    isViewerReadyEvent(value) || isMeasurementAddedEvent(value) || isMeasurementUpdatedEvent(value)
+    isViewerReadyEvent(value) ||
+    isMeasurementAddedEvent(value) ||
+    isMeasurementUpdatedEvent(value) ||
+    isMeasurementRemovedEvent(value)
   );
 }
