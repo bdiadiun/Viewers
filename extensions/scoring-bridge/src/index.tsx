@@ -2,6 +2,7 @@ import { Types } from '@ohif/core';
 
 import { id } from './id';
 import { createBridge } from './bridge';
+import getCustomizationModule from './getCustomizationModule';
 
 /**
  * Scoring bridge extension.
@@ -29,6 +30,12 @@ const scoringBridgeExtension: Types.Extensions.Extension = {
 
     window.addEventListener('pagehide', onPageHide);
   },
+
+  /**
+   * S-5.5: appends the build-time OHIF version to the bottom-right viewport overlay of every
+   * viewport. See ./getCustomizationModule for the merge mechanics.
+   */
+  getCustomizationModule,
 };
 
 export default scoringBridgeExtension;
