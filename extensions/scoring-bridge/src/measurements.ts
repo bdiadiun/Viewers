@@ -7,6 +7,10 @@ import type { Metrics, Unit } from './contract/messages';
  * field to the row") is therefore a single-function change: adding perimeter or mean intensity
  * means adding a key to the object built below, not a new message type and not a second mapper.
  *
+ * Callers say how loudly a failed mapping should be reported: the ADDED path warns (a completed
+ * measurement without stats is a real problem), the UPDATED path passes `quiet: true` because a
+ * mid-drag frame without stats is normal.
+ *
  * Two rules the whole slice rests on:
  * - Values are NOT rounded here. The host formats for display (C-4.3.6); the viewer ships the
  *   number OHIF computed, so the sum (C-4.3.8) is not built out of pre-rounded parts.
@@ -67,18 +71,47 @@ function baseUnitToken(raw: string): string {
   return raw.trim().split(/\s+/)[0] ?? '';
 }
 
-function normaliseUnit(raw: unknown, table: Record<string, Unit>, context: string): Unit | null {
+/**
+ * How loudly a failed mapping is reported.
+ *
+ * On the MEASUREMENT_ADDED path a measurement is complete and a missing stat is a real problem:
+ * the host gets no row and someone has to see why. On the MEASUREMENT_UPDATED path the same
+ * failure is routine — cornerstone recomputes `cachedStats` in its render pass, so mid-drag frames
+ * legitimately carry no usable stats yet (the value arrives one frame later), and a drag would
+ * otherwise print one warning per frame. `quiet` picks console.debug for those callers; nothing
+ * is swallowed, it just stops shouting.
+ */
+export interface MetricsOptions {
+  quiet?: boolean;
+}
+
+function note(quiet: boolean | undefined, message: string, detail?: unknown): void {
+  const log = quiet ? console.debug : console.warn;
+
+  if (detail === undefined) {
+    log(message);
+  } else {
+    log(message, detail);
+  }
+}
+
+function normaliseUnit(
+  raw: unknown,
+  table: Record<string, Unit>,
+  context: string,
+  quiet?: boolean
+): Unit | null {
   if (typeof raw !== 'string' || raw.trim().length === 0) {
-    console.warn(`[scoring-bridge] ${context}: missing unit`, raw);
+    note(quiet, `[scoring-bridge] ${context}: missing unit`, raw);
     return null;
   }
 
   const unit = table[baseUnitToken(raw)];
 
   if (!unit) {
-    // Loud and specific: an unmapped unit means the wire format would lie about what the number
-    // is, and a wrong unit poisons the per-unit sum on the host (Q-6). Dropping is the safe side.
-    console.warn(`[scoring-bridge] ${context}: unsupported unit string "${raw}"`);
+    // Specific: an unmapped unit means the wire format would lie about what the number is, and a
+    // wrong unit poisons the per-unit sum on the host (Q-6). Dropping is the safe side.
+    note(quiet, `[scoring-bridge] ${context}: unsupported unit string "${raw}"`);
     return null;
   }
 
@@ -121,11 +154,12 @@ function findStatsEntry(measurement: OhifMeasurementLike, key: string): StatsEnt
 }
 
 /** EllipticalROI / RectangleROI: `{ area: { value, unit } }`. */
-function toAreaMetrics(measurement: OhifMeasurementLike): Metrics | null {
+function toAreaMetrics(measurement: OhifMeasurementLike, quiet?: boolean): Metrics | null {
   const stats = findStatsEntry(measurement, 'area');
 
   if (!stats) {
-    console.warn(
+    note(
+      quiet,
       `[scoring-bridge] no area in measurement.data for ${measurement.uid ?? '(no uid)'}`,
       measurement.data
     );
@@ -135,7 +169,8 @@ function toAreaMetrics(measurement: OhifMeasurementLike): Metrics | null {
   const unit = normaliseUnit(
     stats.areaUnit,
     AREA_UNITS,
-    `area of ${measurement.uid ?? '(no uid)'}`
+    `area of ${measurement.uid ?? '(no uid)'}`,
+    quiet
   );
 
   if (!unit) {
@@ -150,11 +185,12 @@ function toAreaMetrics(measurement: OhifMeasurementLike): Metrics | null {
  * verifies. Note OHIF's own `'mm'` default at Length.ts:118; we do not copy that default, because
  * guessing millimetres on an uncalibrated image is exactly the mistake Q-6 guards against.
  */
-function toLengthMetrics(measurement: OhifMeasurementLike): Metrics | null {
+function toLengthMetrics(measurement: OhifMeasurementLike, quiet?: boolean): Metrics | null {
   const stats = findStatsEntry(measurement, 'length');
 
   if (!stats) {
-    console.warn(
+    note(
+      quiet,
       `[scoring-bridge] no length in measurement.data for ${measurement.uid ?? '(no uid)'}`,
       measurement.data
     );
@@ -164,7 +200,8 @@ function toLengthMetrics(measurement: OhifMeasurementLike): Metrics | null {
   const unit = normaliseUnit(
     stats.unit,
     LENGTH_UNITS,
-    `length of ${measurement.uid ?? '(no uid)'}`
+    `length of ${measurement.uid ?? '(no uid)'}`,
+    quiet
   );
 
   if (!unit) {
@@ -178,15 +215,19 @@ function toLengthMetrics(measurement: OhifMeasurementLike): Metrics | null {
  * Maps one OHIF measurement to the contract `metrics`, or null when nothing can be reported
  * honestly (unknown tool, missing stats, unmappable unit). The caller does not post on null.
  */
-export function toMetrics(measurement: OhifMeasurementLike): Metrics | null {
+export function toMetrics(
+  measurement: OhifMeasurementLike,
+  { quiet }: MetricsOptions = {}
+): Metrics | null {
   switch (measurement?.toolName) {
     case 'EllipticalROI':
     case 'RectangleROI':
-      return toAreaMetrics(measurement);
+      return toAreaMetrics(measurement, quiet);
     case 'Length':
-      return toLengthMetrics(measurement);
+      return toLengthMetrics(measurement, quiet);
     default:
-      console.warn(
+      note(
+        quiet,
         `[scoring-bridge] no metric mapping for tool "${measurement?.toolName ?? '(none)'}"`
       );
       return null;

@@ -189,7 +189,7 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
           return;
         }
 
-        const metrics = toMetrics(fresh);
+        const metrics = toMetrics(fresh, { quiet: true });
 
         if (!metrics || JSON.stringify(metrics) === lastSentMetrics.get(uid)) {
           return;
@@ -292,11 +292,13 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
         return;
       }
 
-      const metrics = toMetrics(measurement);
+      // quiet: a mid-drag frame whose cachedStats cornerstone has not recomputed yet is normal,
+      // and a drag produces dozens of them; the failure is logged at debug level instead.
+      const metrics = toMetrics(measurement, { quiet: true });
 
       if (!metrics) {
         // Mid-drag frames can legitimately carry NaN stats while cornerstone recomputes them;
-        // toMetrics already warned and the next frame carries the real value.
+        // toMetrics already said so and the next frame carries the real value.
         return;
       }
 
