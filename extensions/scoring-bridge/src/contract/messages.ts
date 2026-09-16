@@ -15,7 +15,8 @@
 
 // CONTRACT_VERSION stays 1: F-15 (two-way deletion, S-5.2) only adds new message shapes
 // (RemoveMeasurementCommand, MeasurementRemovedEvent) and new entries in the *_TYPES lists;
-// no existing shape is changed, so wire-compatible peers do not need a version bump.
+// no existing shape is changed, so wire-compatible peers do not need a version bump. F-16
+// (focus from row, S-5.3) adds FocusMeasurementCommand the same way.
 export const CONTRACT_VERSION = 1 as const;
 
 // Normalised spelling used on the wire; the display layer renders mm² / px² for humans.
@@ -57,7 +58,19 @@ export interface RemoveMeasurementCommand {
   measurementUid: string;
 }
 
-export type HostCommand = ActivateToolCommand | DeactivateToolCommand | RemoveMeasurementCommand;
+export interface FocusMeasurementCommand {
+  version: 1;
+  type: 'FOCUS_MEASUREMENT';
+  requestId: string;
+  rowId: string;
+  measurementUid: string;
+}
+
+export type HostCommand =
+  | ActivateToolCommand
+  | DeactivateToolCommand
+  | RemoveMeasurementCommand
+  | FocusMeasurementCommand;
 
 // viewer -> host
 
@@ -109,7 +122,12 @@ export type ViewerEvent =
 
 export type BridgeMessage = HostCommand | ViewerEvent;
 
-export const HOST_COMMAND_TYPES = ['ACTIVATE_TOOL', 'DEACTIVATE_TOOL', 'REMOVE_MEASUREMENT'] as const;
+export const HOST_COMMAND_TYPES = [
+  'ACTIVATE_TOOL',
+  'DEACTIVATE_TOOL',
+  'REMOVE_MEASUREMENT',
+  'FOCUS_MEASUREMENT',
+] as const;
 
 export const VIEWER_EVENT_TYPES = [
   'VIEWER_READY',
@@ -187,6 +205,15 @@ function isRemoveMeasurementCommand(value: Record<string, unknown>): boolean {
   );
 }
 
+function isFocusMeasurementCommand(value: Record<string, unknown>): boolean {
+  return (
+    value.type === 'FOCUS_MEASUREMENT' &&
+    isNonEmptyString(value.requestId) &&
+    isNonEmptyString(value.rowId) &&
+    isNonEmptyString(value.measurementUid)
+  );
+}
+
 function isViewerReadyEvent(value: Record<string, unknown>): boolean {
   return value.type === 'VIEWER_READY' && typeof value.viewerVersion === 'string';
 }
@@ -231,7 +258,10 @@ export function isHostCommand(value: unknown): value is HostCommand {
     return false;
   }
   return (
-    isActivateToolCommand(value) || isDeactivateToolCommand(value) || isRemoveMeasurementCommand(value)
+    isActivateToolCommand(value) ||
+    isDeactivateToolCommand(value) ||
+    isRemoveMeasurementCommand(value) ||
+    isFocusMeasurementCommand(value)
   );
 }
 

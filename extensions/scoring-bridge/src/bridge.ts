@@ -1,6 +1,7 @@
 import { HOST_ORIGIN } from './config';
 import { createToolCommands } from './commands';
 import { createRemovalCommands } from './removals';
+import { createFocusCommands } from './focus';
 import { toMetrics } from './measurements';
 import type { OhifMeasurementLike } from './measurements';
 import { createThrottledEmitter } from './throttle';
@@ -65,11 +66,15 @@ export function createBridge({ servicesManager, commandsManager }: BridgeDeps): 
   });
   disposers.push(() => removals.dispose());
 
+  // S-5.3: FOCUS_MEASUREMENT is stateless (focus.ts) — nothing to dispose, nothing to subscribe.
+  const focus = createFocusCommands({ servicesManager });
+
   // Command handling (ACTIVATE_TOOL / DEACTIVATE_TOOL) and the armed-row state live in commands.ts.
   const toolCommands = createToolCommands({
     servicesManager,
     commandsManager,
     onRemoveMeasurement: removals.handleRemove,
+    onFocusMeasurement: focus.handleFocus,
   });
 
   /**
