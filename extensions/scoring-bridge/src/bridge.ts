@@ -13,51 +13,25 @@ import type {
   ViewerReadyEvent,
 } from './contract/messages';
 
-/**
- * The bridge between OHIF and the embedding host-app (C-3.2, C-3.4).
- *
- * It owns the whole postMessage surface of the viewer: OHIF itself has none, so every listener,
- * every origin check and every outgoing event lives here: the handshake (VIEWER_READY), the
- * incoming host commands (delegated to commands.ts) and MEASUREMENT_ADDED and
- * MEASUREMENT_UPDATED, MEASUREMENT_REMOVED.
- */
-
 type Unsubscribe = () => void;
 
 export interface BridgeDeps {
-  /** OHIF services container; we use measurementService and (optionally) toolGroupService. */
   servicesManager: AppTypes.ServicesManager;
-  /** Used by ACTIVATE_TOOL / DEACTIVATE_TOOL via commandsManager.runCommand('setToolActive'). */
   commandsManager: AppTypes.CommandsManager;
 }
 
 export interface Bridge {
-  /** Removes every listener and subscription this bridge created (Q-5). */
   dispose: Unsubscribe;
-  /** Row currently waiting for a drawing, or null. */
   getArmedRowId: () => string | null;
 }
 
-/**
- * The viewer build version, injected by webpack DefinePlugin from version.txt:
- * .webpack/webpack.base.js:32,46 ('process.env.VERSION_NUMBER'). Used by
- * extensions/default/src/customizations/aboutModalCustomization.tsx:10 the same way.
- */
 const VIEWER_VERSION = process.env.VERSION_NUMBER ?? 'unknown';
 
-/**
- * S-5.1: at most one MEASUREMENT_UPDATED per measurement per this many milliseconds while a handle
- * is dragged. 100 ms is ten updates a second: the form's number still follows the drag without
- * visible lag, while a 60 fps drag (one ANNOTATION_MODIFIED per frame) is cut about six-fold.
- */
+// Ten updates a second follow a drag without visible lag and cut a 60 fps drag six-fold.
 const UPDATE_INTERVAL_MS = 100;
 
-/**
- * Delay of the post-ADDED `cachedStats` re-read (see scheduleAddedCorrection). Cornerstone settles
- * the stats in a scheduled render pass a few frames after mouse-up; 150 ms is roughly nine frames
- * at 60 fps, comfortably past that pass, and still short enough that a corrected value reaches the
- * form before the user looks at it.
- */
+// About nine frames: past the render pass that settles cachedStats after mouse-up, yet quick
+// enough that a corrected value reaches the form before the user looks at it.
 const ADDED_CORRECTION_DELAY_MS = 150;
 
 export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): Bridge => {
@@ -65,26 +39,17 @@ export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): 
 
   const disposers: Unsubscribe[] = [];
 
-  /**
-   * Erases a uid from every piece of per-measurement state this bridge keeps. Assigned inside the
-   * `measurementService` block below, where that state is declared; a no-op until then (and
-   * forever, if there is no measurementService — in which case there is no state to erase either).
-   * Declared here because the removal commands are created before that block and need it.
-   */
+  // Assigned in the measurementService block, where the per-measurement state lives.
   let forgetMeasurement: (uid: string) => void = () => undefined;
 
-  // S-5.2: REMOVE_MEASUREMENT and the parked requestIds of the echo guard (A-10) live in
-  // removals.ts; the command still arrives through the single dispatch in commands.ts.
   const removals = createRemovalCommands({
     servicesManager,
     forget: uid => forgetMeasurement(uid),
   });
   disposers.push(() => removals.dispose());
 
-  // S-5.3: FOCUS_MEASUREMENT is stateless (focus.ts) — nothing to dispose, nothing to subscribe.
   const focus = createFocusCommands({ servicesManager });
 
-  // Command handling (ACTIVATE_TOOL / DEACTIVATE_TOOL) and the armed-row state live in commands.ts.
   const toolCommands = createToolCommands({
     servicesManager,
     commandsManager,
@@ -92,20 +57,9 @@ export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): 
     onFocusMeasurement: focus.handleFocus,
   });
 
-  /**
-   * A-8: the viewer-side half of the correlation. The host issues `rowId`, the viewer issues
-   * `measurementUid`, and this map is where the viewer remembers the pairing. It is not needed to
-   * emit MEASUREMENT_ADDED (the armed row is known at that moment) — it is needed for
-   * MEASUREMENT_UPDATED and especially MEASUREMENT_REMOVED, which delivers only the uid string
-   * (MeasurementService.ts:686-689) and so cannot be attributed to a row any other way.
-   */
+  // A-8: needed because MEASUREMENT_REMOVED carries only the uid (MeasurementService.ts:686-689).
   const uidToRowId = new Map<string, string>();
 
-  /**
-   * The only outgoing channel. Q-2: an explicit targetOrigin, never '*'. Not embedded means there
-   * is nothing to talk to — window.parent === window when the viewer is opened directly, and
-   * posting to ourselves would only bounce off our own origin check.
-   */
   const postToHost = (
     message:
       | ViewerReadyEvent
@@ -122,10 +76,8 @@ export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): 
     return true;
   };
 
-  // --- incoming messages -------------------------------------------------------------------
-  // Q-2: everything that does not come from HOST_ORIGIN is dropped. We warn once so that a
-  // misconfigured origin is diagnosable without flooding the console from unrelated senders
-  // (browser extensions, dev-server HMR clients) and without throwing inside a listener.
+  // Q-2: only HOST_ORIGIN may command the viewer. Logged once, so a misconfigured origin is
+  // diagnosable without flooding from browser extensions or HMR clients.
   let foreignOriginLogged = false;
 
   const onMessage = (event: MessageEvent): void => {
@@ -139,51 +91,21 @@ export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): 
       return;
     }
 
-    // Origin is trusted from here on; the shape still is not (Q-7).
     toolCommands.handleMessage(event.data);
   };
 
   window.addEventListener('message', onMessage);
   disposers.push(() => window.removeEventListener('message', onMessage));
 
-  // --- measurement subscription ------------------------------------------------------------
-  // P-4: this is the single place where the viewer learns that an annotation was completed.
-  // We subscribe on measurementService rather than on raw cornerstone events because the service
-  // collapses ANNOTATION_ADDED + ANNOTATION_COMPLETED into one MEASUREMENT_ADDED
-  // (platform/core/src/services/MeasurementService/MeasurementService.ts:545-576) and hands back
-  // an unsubscribe closure, which is what Q-5 needs. The payload mapping lives in measurements.ts.
+  // P-4: measurementService, not raw cornerstone events, because it merges ANNOTATION_ADDED +
+  // ANNOTATION_COMPLETED into one MEASUREMENT_ADDED (MeasurementService.ts:545-576).
   if (measurementService) {
-    /**
-     * Guard against double delivery. The service is expected to broadcast ADDED exactly once per
-     * completed annotation (the ANNOTATION_ADDED pass stores it without broadcasting,
-     * MeasurementService.ts:572-574, and only the ANNOTATION_COMPLETED pass emits). That is an
-     * OHIF implementation detail, not a contract, and a second ADDED for the same uid would give
-     * the host a duplicate row and a wrong total (C-4.3.8). The uid is the cornerstone
-     * annotationUID and is stable, so it is the natural identity for "already handled".
-     * uidToRowId cannot serve as this set: unarmed measurements are never put in it.
-     */
+    // Single ADDED per uid is an OHIF detail (MeasurementService.ts:572-574), not a contract; a
+    // duplicate would double the total. uidToRowId cannot serve: unarmed uids never enter it.
     const reportedUids = new Set<string>();
 
-    /**
-     * S-5.1 — live update while a handle is dragged.
-     *
-     * Q-4 / P-6, echo loop. Nothing in this bridge reacts to a MEASUREMENT_* event, and nothing on
-     * the host side can cause one: the host's only commands are ACTIVATE_TOOL / DEACTIVATE_TOOL,
-     * which arm a tool and never touch an existing annotation. The loop point in OHIF is
-     * `measurementService.update()` (MeasurementService.ts:365-386), which re-broadcasts
-     * MEASUREMENT_UPDATED — we never call it, and neither does any command path in commands.ts.
-     * So an UPDATED can only originate from the user dragging in the viewer; it carries no
-     * `causedBy` (A-10) because there is no host request to attribute it to. If a future command
-     * ever mutates a measurement, `causedBy` is the place to mark it and that command's handler is
-     * the place the loop would have to be cut.
-     *
-     * Volume, not loops, is the real hazard here: UPDATED fires once per ANNOTATION_MODIFIED, i.e.
-     * per drag frame, so the stream is throttled per measurement uid (throttle.ts) to one post per
-     * UPDATE_INTERVAL_MS, always carrying the latest value and always with a trailing emit so the
-     * value the handle was released on reaches the host.
-     */
-
-    /** Last metrics actually posted per uid, serialised — used to skip no-op corrections. */
+    // No causedBy on UPDATED (A-10): no command calls measurementService.update(), the OHIF loop
+    // point (MeasurementService.ts:365-386), so an update always comes from the user's drag.
     const lastSentMetrics = new Map<string, string>();
 
     const updateEmitter = createThrottledEmitter<{ toolName: string; metrics: Metrics }>(
@@ -207,16 +129,10 @@ export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): 
     );
     disposers.push(() => updateEmitter.dispose());
 
-    /**
-     * The one-frame-late `cachedStats` correction (see the note further down about ADDED being
-     * broadcast synchronously from the mouse-up). A short moment after ADDED we re-read the
-     * measurement from the service and, if OHIF's render pass has since settled on a different
-     * area, push that through the same throttled channel as a normal UPDATED. If the value is
-     * already correct — the usual case — nothing is sent.
-     */
+    // cornerstone fills cachedStats in a scheduled render pass while ADDED is broadcast
+    // synchronously on mouse-up, so a fast release can report a value one render behind.
     const correctionTimers = new Set<ReturnType<typeof setTimeout>>();
     disposers.push(() => {
-      // Q-5: a timer outliving the bridge would post through a disposed channel.
       correctionTimers.forEach(timer => clearTimeout(timer));
       correctionTimers.clear();
       lastSentMetrics.clear();
@@ -226,7 +142,6 @@ export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): 
       const timer = setTimeout(() => {
         correctionTimers.delete(timer);
 
-        // MeasurementService.ts:198 — read-back by uid.
         const fresh = measurementService.getMeasurement(uid) as OhifMeasurementLike | undefined;
 
         if (!fresh) {
@@ -265,15 +180,12 @@ export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): 
       const metrics = toMetrics(measurement);
 
       if (!metrics) {
-        // toMetrics already said why. Nothing is posted: a MEASUREMENT_ADDED without a usable
-        // value would leave the row stuck between "drawing" and "done" (C-4.3.6). The arming is
-        // left in place so the user can simply draw again.
+        // Arming stays in place so the user can simply draw again.
         console.warn(`${LOG_PREFIX} no metrics for measurement ${uid}; nothing sent to the host`);
         return;
       }
 
-      // A-8: a measurement drawn while nothing is armed (straight from the OHIF toolbar) is still
-      // forwarded, with rowId: null. The viewer does not decide what to do with it — the host does.
+      // A-8: unarmed drawings are forwarded with rowId: null; the host decides what to do.
       const armed = toolCommands.getArmed();
 
       const event: MeasurementAddedEvent = {
@@ -283,8 +195,6 @@ export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): 
         measurementUid: uid,
         toolName: typeof measurement.toolName === 'string' ? measurement.toolName : '',
         metrics,
-        // A-10: echoes the ACTIVATE_TOOL that caused this drawing, so the host can tell an event
-        // it provoked from one the user produced on their own.
         causedBy: armed?.requestId,
       };
 
@@ -297,16 +207,12 @@ export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): 
 
       if (event.rowId !== null) {
         uidToRowId.set(uid, event.rowId);
-        // S-5.1: only a measurement bound to a row can be updated in the form, so only that one
-        // is worth correcting.
         scheduleAddedCorrection(uid);
       }
 
       console.debug(`${LOG_PREFIX} MEASUREMENT_ADDED sent`, event);
 
-      // C-4.3.6: the tool deactivates by itself once the value is on its way, putting back the
-      // tool the user had before arming. Done after posting so a failing restore cannot swallow
-      // the event.
+      // C-4.3.6: after posting, so a failing tool restore cannot swallow the event.
       if (armed) {
         toolCommands.disarm(DisarmReason.MeasurementReceived);
       }
@@ -325,27 +231,19 @@ export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): 
         return;
       }
 
-      // Only measurements the host knows about are worth updating. A measurement drawn without
-      // arming was delivered with `rowId: null` and never entered uidToRowId, so the host has no
-      // row to update — sending its drag frames would be noise the host can only drop. The same
-      // filter keeps annotations restored from elsewhere out of the stream.
       if (!uidToRowId.has(uid)) {
         return;
       }
 
-      // quiet: a mid-drag frame whose cachedStats cornerstone has not recomputed yet is normal,
-      // and a drag produces dozens of them; the failure is logged at debug level instead.
+      // Mid-drag frames can carry stats cornerstone has not recomputed yet; quiet, not a warning.
       const metrics = toMetrics(measurement, { quiet: true });
 
       if (!metrics) {
-        // Mid-drag frames can legitimately carry NaN stats while cornerstone recomputes them;
-        // toMetrics already said so and the next frame carries the real value.
         return;
       }
 
-      // Not every ANNOTATION_MODIFIED changes the numbers — selecting or deselecting an annotation
-      // also fires one. Re-sending a value the host already has is pure noise, so it is dropped
-      // here rather than after the throttle, which keeps the trailing emit meaningful.
+      // Selecting an annotation also fires ANNOTATION_MODIFIED; dropped before the throttle so
+      // the trailing emit carries a real change.
       if (JSON.stringify(metrics) === lastSentMetrics.get(uid)) {
         return;
       }
@@ -362,45 +260,16 @@ export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): 
     );
     disposers.push(() => updateSubscription.unsubscribe());
 
-    // --- removals ---------------------------------------------------------------------------
-    /**
-     * Everything this bridge remembers about one measurement, dropped in one place. Called from
-     * the MEASUREMENT_REMOVED subscriber below (whatever caused the deletion) and from the
-     * REMOVE_MEASUREMENT handler (removals.ts), which also reaches it for a uid that was already
-     * gone. Assigning the outer binding rather than declaring a new one: this state only exists
-     * when measurementService does.
-     */
     forgetMeasurement = (uid: string): void => {
       uidToRowId.delete(uid);
       reportedUids.delete(uid);
       lastSentMetrics.delete(uid);
-      // S-5.1 x S-5.2: a drag frame can still be sitting in the trailing timer when the annotation
-      // is deleted. Flushing it would post a MEASUREMENT_UPDATED for a measurement that no longer
-      // exists and, at the host, resurrect the value of a row that has just been cleared — so the
-      // pending value is discarded, not emitted.
+      // Discard, not flush: a trailing UPDATED after REMOVED would resurrect the cleared row.
       updateEmitter.discard(uid);
     };
 
-    /**
-     * S-5.2, the viewer -> host half: whoever deleted the annotation, the host hears about it.
-     *
-     * P-6, the echo-loop point (Q-4, A-10). This subscriber is the other end of the loop described
-     * in removals.ts: a REMOVE_MEASUREMENT command makes OHIF broadcast exactly the event this
-     * handler forwards. The two guards are:
-     *   - `causedBy` — `takeCause` returns the requestId parked by the handler a moment ago (the
-     *     broadcast is synchronous, MeasurementService.ts:674-689), so the host can recognise the
-     *     answer to its own command and not delete the row a second time. Absent when the deletion
-     *     started in the viewer, which is precisely the case the host must act on;
-     *   - idempotency, in the command handler — a REMOVE_MEASUREMENT for a uid that is already
-     *     gone produces no service call and therefore no event, so a loop cannot even get started.
-     *
-     * The event is posted for *every* uid, bound to a row or not: the viewer does not decide what
-     * the host's rows are (A-8). An unbound uid is simply one the host has nothing to do with.
-     *
-     * Payload shape: `{ source, measurement }` where `measurement` is the **uid string**, not the
-     * measurement object (MeasurementService.ts:686-689). `source` is kept out of the contract —
-     * it is an OHIF-internal mapping source, meaningless to the host.
-     */
+    // P-6 / A-10: the other end of the loop in removals.ts. `measurement` is the uid string, not
+    // the object (MeasurementService.ts:686-689).
     const onMeasurementRemoved = ({ measurement }: { measurement: unknown }): void => {
       const uid = typeof measurement === 'string' ? measurement : undefined;
 
@@ -432,19 +301,10 @@ export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): 
       onMeasurementRemoved
     );
     disposers.push(() => removedSubscription.unsubscribe());
-
-    // Why the post-ADDED correction above exists, measured while verifying the ADDED slice:
-    // cornerstone fills `cachedStats` in its annotation render pass, which is scheduled, while
-    // MEASUREMENT_ADDED is broadcast synchronously from the mouse-up. If the last pointer move and
-    // the release land in the same frame (a fast flick, or synthetic input), the area read here is
-    // one render behind; it settles a few frames later and a trailing MEASUREMENT_UPDATED carries
-    // the final value. Waiting a fixed number of frames here would be a guess, so the value is
-    // taken as OHIF has it at completion and the correction is left to the UPDATED stream.
   } else {
     console.warn(`${LOG_PREFIX} measurementService unavailable; measurements will not be seen`);
   }
 
-  // --- outgoing handshake ------------------------------------------------------------------
   let readySent = false;
 
   const postViewerReady = (): void => {
@@ -466,18 +326,8 @@ export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): 
     console.debug(`${LOG_PREFIX} VIEWER_READY sent to`, HOST_ORIGIN);
   };
 
-  // When to announce readiness (C-4.4.1: "viewer loaded and ready for commands").
-  //
-  // preRegistration runs during appInit, long before the /viewer route mounts. At that moment
-  // commandsManager.runCommand('setToolActive', ...) is registered but useless: the command
-  // resolves the tool group of the active viewport and returns silently when there is none
-  // (extensions/cornerstone/src/commandsModule.ts:1050-1055). A command sent that early would be
-  // accepted and lost, which is exactly what Q-1 forbids.
-  //
-  // The earliest moment at which setToolActive really works is when a viewport has been added to
-  // a tool group, signalled by toolGroupService.EVENTS.VIEWPORT_ADDED
-  // (extensions/cornerstone/src/services/ToolGroupService/ToolGroupService.ts:8). We announce
-  // readiness on the first such event and then unsubscribe.
+  // A-9: setToolActive silently no-ops until a viewport has a tool group
+  // (commandsModule.ts:1050-1055), so readiness waits for VIEWPORT_ADDED.
   if (toolGroupService) {
     const subscription = toolGroupService.subscribe(
       toolGroupService.EVENTS.VIEWPORT_ADDED,
@@ -485,9 +335,6 @@ export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): 
     );
     disposers.push(() => subscription.unsubscribe());
   } else {
-    // Risk accepted and made visible: without the cornerstone extension there is no tool group
-    // signal at all, so we fall back to announcing readiness immediately. Commands may then
-    // arrive before a viewport exists.
     console.warn(`${LOG_PREFIX} toolGroupService unavailable; sending VIEWER_READY immediately`);
     postViewerReady();
   }
@@ -495,8 +342,6 @@ export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): 
   return {
     getArmedRowId: toolCommands.getArmedRowId,
     dispose: () => {
-      // Q-5: the armed state is part of the cleanup. Restore the user's tool before the listeners
-      // go away, otherwise the viewer would be left waiting for a drawing nobody will report.
       toolCommands.disarm(DisarmReason.BridgeDispose);
 
       while (disposers.length > 0) {
@@ -507,8 +352,6 @@ export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): 
           console.warn(`${LOG_PREFIX} disposer failed`, error);
         }
       }
-      // Q-5: the correlation map is bridge state, not page state; a disposed bridge must not leave
-      // uid -> rowId entries of a session that no longer exists behind it.
       uidToRowId.clear();
       readySent = false;
     },
