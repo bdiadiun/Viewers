@@ -1,22 +1,9 @@
-// Purpose: the single source of truth for the host-app <-> viewer postMessage contract
-// (canon C-4.4.1, C-4.4.2, C-4.4.3, Q-7).
-//
-// This file lives in the `@scoring/contract` workspace package (packages/contract) and is
-// consumed by host-app via that package. It must have no imports and no runtime dependencies,
-// so the same file can also be copied verbatim into the OHIF extension at
-// `viewer/extensions/scoring-bridge/src/contract/messages.ts`. That copy must stay
-// byte-identical to this file; `npm run check:contract` (at the repo root) enforces this.
-//
-// Why a copy instead of a shared package import for the viewer side: `viewer/` is a git
-// submodule and must stay a self-contained repository that can be built on its own, so its
-// source cannot import files from outside the submodule (including this workspace package).
-// Canon Q-7 explicitly allows a copied file with this explanation in place of a shared
-// package for that side.
+// Single source of truth for the host-app <-> viewer postMessage contract. No imports, no
+// runtime dependencies, so it can be copied byte-identical into
+// `viewer/extensions/scoring-bridge/src/contract/messages.ts` (the submodule must build
+// standalone); `npm run check:contract` enforces the copies match (Q-7).
 
-// CONTRACT_VERSION stays 1: F-15 (two-way deletion, S-5.2) only adds new message shapes
-// (RemoveMeasurementCommand, MeasurementRemovedEvent) and new entries in the *_TYPES lists;
-// no existing shape is changed, so wire-compatible peers do not need a version bump. F-16
-// (focus from row, S-5.3) adds FocusMeasurementCommand the same way.
+// Adding a message shape stays within version 1; only a breaking change bumps it.
 export const CONTRACT_VERSION = 1 as const;
 
 // Normalised spelling used on the wire; the display layer renders mm² / px² for humans.
@@ -27,8 +14,7 @@ export interface Metric {
   unit: Unit;
 }
 
-// Known keys today: 'area', 'length'. A new measurement (e.g. perimeter, P-8) is a new key,
-// not a new message shape.
+// A new measurement (e.g. perimeter, P-8) is a new key, not a new message shape.
 export type Metrics = Record<string, Metric>;
 
 export type ToolName = 'EllipticalROI' | 'RectangleROI' | 'Length';
@@ -80,14 +66,12 @@ export interface ViewerReadyEvent {
 export interface MeasurementAddedEvent {
   version: 1;
   type: 'MEASUREMENT_ADDED';
-  // null when the measurement was not drawn in response to an ACTIVATE_TOOL command
-  // (e.g. drawn directly from the OHIF toolbar).
+  // null when drawn without an ACTIVATE_TOOL command (e.g. from the OHIF toolbar).
   rowId: string | null;
   measurementUid: string;
   toolName: string;
   metrics: Metrics;
-  // Echoes the requestId of the command that caused this event, so the host can ignore
-  // events it provoked itself (echo-loop protection, decision A-10).
+  // requestId of the command that caused this event, for echo-loop protection (A-10).
   causedBy?: string;
 }
 
@@ -104,10 +88,8 @@ export interface MeasurementRemovedEvent {
   version: 1;
   type: 'MEASUREMENT_REMOVED';
   measurementUid: string;
-  // Echoes the requestId of the REMOVE_MEASUREMENT command that caused this event, so the
-  // host can ignore events it provoked itself (echo-loop protection, decision A-10). Absent
-  // when the deletion originated in the viewer (e.g. via the OHIF toolbar), which is exactly
-  // the case the host needs to hear about to clear the matching row (S-5.2).
+  // Absent when the deletion originated in the viewer, which is the case the host needs to
+  // hear about to clear the matching row (S-5.2, A-10).
   causedBy?: string;
 }
 
@@ -160,9 +142,8 @@ const isMetrics = (value: unknown): value is Metrics => {
 
 const hasVersion1 = (value: Record<string, unknown>): boolean => value.version === 1;
 
-// These return plain booleans rather than type predicates: interfaces without an index
-// signature are not assignable to `Record<string, unknown>`, so a predicate here would not
-// type-check. The narrowing to the concrete message type happens at the call site instead.
+// Plain booleans, not type predicates: interfaces without an index signature are not
+// assignable to `Record<string, unknown>`, so a predicate here would not type-check.
 
 const isActivateToolCommand = (value: Record<string, unknown>): boolean =>
   value.type === 'ACTIVATE_TOOL' &&
@@ -204,8 +185,7 @@ const isMeasurementUpdatedEvent = (value: Record<string, unknown>): boolean =>
   typeof value.toolName === 'string' &&
   isMetrics(value.metrics) &&
   (value.causedBy === undefined || typeof value.causedBy === 'string') &&
-  // rowId is not part of this event; null is reserved to mean "unarmed" on ADDED only, so a
-  // null rowId here is rejected rather than silently accepted as a harmless extra field.
+  // null rowId means "unarmed" on ADDED only; reject it here rather than accept it silently.
   value.rowId !== null;
 
 const isMeasurementRemovedEvent = (value: Record<string, unknown>): boolean =>

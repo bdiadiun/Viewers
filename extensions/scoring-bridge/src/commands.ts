@@ -8,77 +8,34 @@ import type {
   RemoveMeasurementCommand,
 } from './contract/messages';
 
-/**
- * Host command handling: ACTIVATE_TOOL / DEACTIVATE_TOOL (C-4.3.3, C-4.4.1, Q-3, A-4, A-8, P-7).
- *
- * The bridge holds exactly one "armed" row at a time (A-4): arming another row cancels the
- * previous one. Arming remembers which tool the user had on the primary mouse button, so the
- * viewer can put it back on cancel, on unmount (Q-5) and — next slice — after the measurement
- * is finished (C-4.3.6).
- */
-
-/**
- * Restored when nothing was armed before (or the active tool could not be read). WindowLevel is
- * the default primary-mouse tool of the basic/longitudinal tool group
- * (modes/basic/src/initToolGroups.ts:21-24); the assignment's wording "returns to Pan/default" is
- * loose, Pan sits on the auxiliary button there.
- */
+// The default primary-mouse tool (modes/basic/src/initToolGroups.ts:21-24); Pan, named in the
+// assignment, sits on the auxiliary button.
 const FALLBACK_TOOL = 'WindowLevel';
 
-/**
- * Why an armed row is being disarmed. Internal state that only reaches the debug log; the values
- * are the phrases the log line prints.
- */
 export enum DisarmReason {
-  /** C-4.3.6: the drawing finished and MEASUREMENT_ADDED has been posted. */
   MeasurementReceived = 'measurement received',
-  /** The host cancelled the arming. */
   DeactivateTool = 'DEACTIVATE_TOOL',
-  /** A-4: another row was armed; the log line appends the new row id. */
   SwitchingRow = 'switching to row',
-  /** Q-5: the bridge is being torn down. */
   BridgeDispose = 'bridge dispose',
 }
 
 export interface ArmedState {
-  /** Form row this activation belongs to; travels back on MEASUREMENT_ADDED (Q-3, A-8). */
   rowId: string;
-  /** requestId of the ACTIVATE_TOOL command; becomes `causedBy` on the outgoing event (A-10). */
   requestId: string;
-  /** Primary-mouse tool active at the moment of arming; null when it could not be read. */
   previousTool: string | null;
 }
 
 export interface ToolCommandsDeps {
   servicesManager: AppTypes.ServicesManager;
   commandsManager: AppTypes.CommandsManager;
-  /**
-   * REMOVE_MEASUREMENT is dispatched here like every other host command, but it is about an
-   * annotation rather than about a tool, and it needs state this module has no business owning
-   * (the parked requestIds of decision A-10). It is therefore injected; the implementation lives
-   * in removals.ts. Passed as a function so the whole postMessage surface still has exactly one
-   * entry point — handleMessage — with one origin check and one contract guard in front of it.
-   */
   onRemoveMeasurement: (command: RemoveMeasurementCommand) => void;
-  /**
-   * FOCUS_MEASUREMENT, injected for the same reason as onRemoveMeasurement: it is about an
-   * annotation and a viewport, not about the armed tool, so its implementation lives in focus.ts
-   * while the single origin-checked entry point stays here.
-   */
   onFocusMeasurement: (command: FocusMeasurementCommand) => void;
 }
 
 export interface ToolCommands {
-  /** Handles one already-origin-checked incoming message. Unknown shapes are warned about. */
   handleMessage: (data: unknown) => void;
-  /** Row currently waiting for a drawing, or null. Read by the MEASUREMENT_ADDED path. */
   getArmedRowId: () => string | null;
-  /** Full armed state, for the next slice (rowId + causedBy + tool restore after a measurement). */
   getArmed: () => ArmedState | null;
-  /**
-   * Puts the pre-arming tool back and clears the armed state. No-op when nothing is armed.
-   * `detail` is appended to the reason in the log line (e.g. the row being switched to).
-   */
   disarm: (reason: DisarmReason, detail?: string) => void;
 }
 
@@ -92,34 +49,17 @@ export const createToolCommands = ({
 
   let armed: ArmedState | null = null;
 
-  /**
-   * The tool group of the active viewport. `getToolGroup()` without an id resolves it through
-   * getActiveViewportEnabledElement (ToolGroupService.ts:73-104), which is exactly the group
-   * `setToolActive` will use, so both stay in agreement.
-   */
+  // Without an id this resolves the active viewport's group, the one setToolActive uses
+  // (ToolGroupService.ts:73-104).
   const getActiveToolGroup = () => toolGroupService?.getToolGroup();
 
-  /**
-   * Snapshot of the tool currently bound to the primary mouse button
-   * (ToolGroupService.ts:241-243, same optional-id resolution as above).
-   */
   const readActiveTool = (): string | null => {
     const toolName = toolGroupService?.getActivePrimaryMouseButtonTool();
     return typeof toolName === 'string' && toolName.length > 0 ? toolName : null;
   };
 
-  /**
-   * Activation goes through the `setToolActive` command
-   * (extensions/cornerstone/src/commandsModule.ts:1035-1068) and not through
-   * `setToolActiveToolbar` (:1025-1033): the latter loops over *every* tool group, which would arm
-   * viewports the user never asked about. The toolbar highlight still follows, because
-   * `toolGroup.setToolActive` emits cornerstone's TOOL_ACTIVATED and the toolbar is registered for
-   * updates on that event (extensions/cornerstone/src/index.tsx:131-133), while the button state
-   * itself is derived from `getActivePrimaryMouseButtonTool()`
-   * (extensions/cornerstone/src/getToolbarModule.tsx:422-424).
-   *
-   * `setToolActive` returns silently when the tool is unknown, so we check first and report.
-   */
+  // Not setToolActiveToolbar, which arms every tool group (commandsModule.ts:1025-1068).
+  // Both preconditions are checked here because setToolActive fails silently without them.
   const activateTool = (toolName: string): boolean => {
     const toolGroup = getActiveToolGroup();
 
@@ -131,7 +71,6 @@ export const createToolCommands = ({
     }
 
     if (!toolGroup.hasTool(toolName)) {
-      // Nothing is posted back yet; the error event is part of a later slice.
       console.error(
         `${LOG_PREFIX} tool ${toolName} is not registered in tool group ${toolGroup.id}`
       );
@@ -142,7 +81,6 @@ export const createToolCommands = ({
     return true;
   };
 
-  /** Restores the tool remembered at arming time (or the default) and clears `armed`. */
   const disarm = (reason: DisarmReason, detail?: string): void => {
     if (!armed) {
       return;
@@ -157,15 +95,13 @@ export const createToolCommands = ({
   };
 
   const onActivateTool = (command: ActivateToolCommand): void => {
-    // Idempotent re-activation of the row already armed: the viewer is in the requested state,
-    // so doing it again would only overwrite `previousTool` with the tool we ourselves armed (A-10).
+    // A-10: re-arming would overwrite previousTool with the tool we armed ourselves.
     if (armed && armed.rowId === command.rowId) {
       console.debug(`${LOG_PREFIX} ACTIVATE_TOOL for already armed row ${command.rowId}; ignored`);
       return;
     }
 
-    // Switching rows: cancel the previous arming first, so `previousTool` snapshotted below is the
-    // user's own tool and not the ROI tool we armed for the other row (A-4).
+    // A-4: disarm first so the snapshot below is the user's tool, not one we armed.
     if (armed) {
       disarm(DisarmReason.SwitchingRow, command.rowId);
     }
@@ -173,7 +109,6 @@ export const createToolCommands = ({
     const previousTool = readActiveTool();
 
     if (!activateTool(command.toolName)) {
-      // Activation failed; stay unarmed so a later measurement is not mis-attributed to this row.
       return;
     }
 
@@ -184,8 +119,7 @@ export const createToolCommands = ({
   };
 
   const onDeactivateTool = (command: DeactivateToolCommand): void => {
-    // Not armed at all, or armed for a different row: the requested state already holds, so this
-    // is a no-op rather than an error (A-10 idempotency; e.g. a cancel racing a finished drawing).
+    // A-10: already in the requested state (e.g. a cancel racing a finished drawing); a no-op.
     if (!armed) {
       console.debug(
         `${LOG_PREFIX} DEACTIVATE_TOOL for row ${command.rowId} while unarmed; ignored`
@@ -212,29 +146,19 @@ export const createToolCommands = ({
         onDeactivateTool(command);
         return;
       case 'REMOVE_MEASUREMENT':
-        // S-5.2 / P-6. Deliberately *not* touching the armed state: arming is about which tool sits
-        // on the mouse and which row the next drawing belongs to, and deleting an existing
-        // annotation says nothing about either — even when the deleted annotation belongs to the
-        // row that is currently armed, the user is still waiting to draw for that row.
+        // Removing or focusing an existing annotation leaves the armed row waiting for its drawing.
         onRemoveMeasurement(command);
         return;
       case 'FOCUS_MEASUREMENT':
-        // S-5.3. Like REMOVE_MEASUREMENT it leaves the armed state alone: scrolling to an existing
-        // annotation says nothing about which row the *next* drawing belongs to, and the user may
-        // well click a filled row to look at it while another row is armed and waiting.
         onFocusMeasurement(command);
         return;
       default:
-        // Unreachable while HostCommand has exactly these four members; kept so that adding a
-        // command to the contract without handling it here fails the type check.
         console.warn(`${LOG_PREFIX} unhandled host command`, command);
     }
   };
 
   return {
     handleMessage: (data: unknown): void => {
-      // Q-7: the contract guard is the only accepted way in. Anything else (a stray postMessage
-      // from the host page, an older protocol version) is dropped loudly but harmlessly.
       if (!isHostCommand(data)) {
         console.warn(`${LOG_PREFIX} ignoring message that is not a valid host command`, data);
         return;
