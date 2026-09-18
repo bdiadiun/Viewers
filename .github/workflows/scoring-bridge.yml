@@ -1,0 +1,27 @@
+name: scoring bridge
+
+on:
+  pull_request:
+    branches: [scoring]
+  push:
+    branches: [scoring]
+
+permissions:
+  contents: read
+
+jobs:
+  contract-hash:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # No install step: the check uses Node built-ins only.
+      - name: Check the contract copy against its committed hash
+        run: node extensions/scoring-bridge/scripts/check-contract-hash.mjs
