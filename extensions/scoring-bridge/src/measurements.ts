@@ -1,5 +1,6 @@
+import type { Metrics, Unit } from '@bdiadiun/scoring-contract';
+
 import { LOG_PREFIX } from './config';
-import type { Metrics, Unit } from './contract/messages';
 
 // A-11: values are not rounded and travel with their unit; an unnameable unit is dropped.
 

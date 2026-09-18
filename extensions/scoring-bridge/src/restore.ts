@@ -1,9 +1,3 @@
-import { annotation } from '@cornerstonejs/tools';
-import { triggerAnnotationRenderForViewportIds } from '@cornerstonejs/tools/utilities';
-
-import { LOG_PREFIX } from './config';
-import type { PostToHost } from './messaging';
-import type { ReportedMeasurements } from './reportedMeasurements';
 import {
   isMeasurementGeometry,
   type MeasurementsRestoredEvent,
@@ -11,7 +5,13 @@ import {
   type RestoreFailureReason,
   type RestoreMeasurementRequest,
   type RestoreMeasurementsCommand,
-} from './contract/messages';
+} from '@bdiadiun/scoring-contract';
+import { annotation } from '@cornerstonejs/tools';
+import { triggerAnnotationRenderForViewportIds } from '@cornerstonejs/tools/utilities';
+
+import { LOG_PREFIX } from './config';
+import type { PostToHost } from './messaging';
+import type { ReportedMeasurements } from './reportedMeasurements';
 
 // A-14 / S-5.6. No value is posted from here: cornerstone recomputes cachedStats in the render
 // pass this triggers and the existing MEASUREMENT_UPDATED path delivers it, which is why the

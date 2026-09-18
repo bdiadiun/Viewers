@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  contract-hash:
+  build-extension:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,6 +22,8 @@ jobs:
         with:
           node-version: 22
 
-      # No install step: the check uses Node built-ins only.
-      - name: Check the contract copy against its committed hash
-        run: node extensions/scoring-bridge/scripts/check-contract-hash.mjs
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build the viewer with the scoring bridge extension
+        run: OHIF_OPEN=false QUICK_BUILD=true yarn --cwd platform/app build:viewer

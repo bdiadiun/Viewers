@@ -1,4 +1,3 @@
-import { LOG_PREFIX } from './config';
 import type {
   ActivateToolCommand,
   DeactivateToolCommand,
@@ -6,7 +5,9 @@ import type {
   HostCommand,
   RemoveMeasurementCommand,
   RestoreMeasurementsCommand,
-} from './contract/messages';
+} from '@bdiadiun/scoring-contract';
+
+import { LOG_PREFIX } from './config';
 
 // The default primary-mouse tool (modes/basic/src/initToolGroups.ts:21-24); Pan, named in the
 // assignment, sits on the auxiliary button.

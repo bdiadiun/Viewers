@@ -1907,6 +1907,11 @@
   resolved "https://registry.yarnpkg.com/@bcoe/v8-coverage/-/v8-coverage-0.2.3.tgz#75a2e8b51cb758a7553d6804a5932d7aace75c39"
   integrity sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==
 
+"@bdiadiun/scoring-contract@0.0.1":
+  version "0.0.1"
+  resolved "https://registry.yarnpkg.com/@bdiadiun/scoring-contract/-/scoring-contract-0.0.1.tgz#f2fc78a7011abf8fe72df996087775da49351eef"
+  integrity sha512-D77TAuZRSY2auchn3kPhds60yuZnt0QUEe5VoDhNgcMozbP1iWlbhxBItTL1YVF6zBP7/Pawbt/9TTb0MC1yWg==
+
 "@cornerstonejs/adapters@4.15.29":
   version "4.15.29"
   resolved "https://registry.yarnpkg.com/@cornerstonejs/adapters/-/adapters-4.15.29.tgz#cd8a60c72db55a76f8e0489ad825bf0f28b0f625"

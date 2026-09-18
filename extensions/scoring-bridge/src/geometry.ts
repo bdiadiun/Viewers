@@ -1,6 +1,7 @@
+import { isMeasurementGeometry, type MeasurementGeometry } from '@bdiadiun/scoring-contract';
+
 import { LOG_PREFIX } from './config';
 import type { OhifMeasurementLike } from './measurements';
-import { isMeasurementGeometry, type MeasurementGeometry } from './contract/messages';
 
 // A-14: the shape the host persists so the viewer can rebuild the annotation after a reload.
 // Everything here comes from the measurement itself (EllipticalROI.ts:61-81); nothing is derived.

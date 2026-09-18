@@ -1,7 +1,12 @@
+import type {
+  MeasurementGeometry,
+  MeasurementUpdatedEvent,
+  Metrics,
+} from '@bdiadiun/scoring-contract';
+
 import { LOG_PREFIX } from './config';
 import { createThrottledEmitter } from './throttle';
 import type { PostToHost } from './messaging';
-import type { MeasurementGeometry, MeasurementUpdatedEvent, Metrics } from './contract/messages';
 
 // Ten updates a second follow a drag without visible lag and cut a 60 fps drag six-fold.
 const UPDATE_INTERVAL_MS = 100;
