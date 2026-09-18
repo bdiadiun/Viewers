@@ -1,5 +1,6 @@
+import type { FocusMeasurementCommand } from '@bdiadiun/scoring-contract';
+
 import { LOG_PREFIX } from './config';
-import type { FocusMeasurementCommand } from './contract/messages';
 
 // S-5.3: posts nothing back and only moves the viewport, so it cannot start an echo loop (Q-4).
 

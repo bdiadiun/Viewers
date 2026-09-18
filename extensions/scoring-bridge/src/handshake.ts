@@ -1,6 +1,7 @@
+import type { ViewerReadyEvent } from '@bdiadiun/scoring-contract';
+
 import { HOST_ORIGIN, LOG_PREFIX } from './config';
 import type { PostToHost } from './messaging';
-import type { ViewerReadyEvent } from './contract/messages';
 
 const VIEWER_VERSION = process.env.VERSION_NUMBER ?? 'unknown';
 

@@ -1,5 +1,4 @@
-import { HOST_ORIGIN, LOG_PREFIX } from './config';
-import { isHostCommand } from './contract/messages';
+import { isHostCommand } from '@bdiadiun/scoring-contract';
 import type {
   HostCommand,
   MeasurementAddedEvent,
@@ -7,7 +6,9 @@ import type {
   MeasurementUpdatedEvent,
   MeasurementsRestoredEvent,
   ViewerReadyEvent,
-} from './contract/messages';
+} from '@bdiadiun/scoring-contract';
+
+import { HOST_ORIGIN, LOG_PREFIX } from './config';
 
 export type ViewerEvent =
   | ViewerReadyEvent

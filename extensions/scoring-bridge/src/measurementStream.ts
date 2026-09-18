@@ -1,3 +1,9 @@
+import type {
+  MeasurementAddedEvent,
+  MeasurementRemovedEvent,
+  Metrics,
+} from '@bdiadiun/scoring-contract';
+
 import { LOG_PREFIX } from './config';
 import { DisarmReason } from './commands';
 import type { ArmedState } from './commands';
@@ -6,7 +12,6 @@ import { toMetrics } from './measurements';
 import type { OhifMeasurementLike } from './measurements';
 import type { PostToHost } from './messaging';
 import type { ReportedMeasurements } from './reportedMeasurements';
-import type { MeasurementAddedEvent, MeasurementRemovedEvent, Metrics } from './contract/messages';
 
 // About nine frames: past the render pass that settles cachedStats after mouse-up, yet quick
 // enough that a corrected value reaches the form before the user looks at it.

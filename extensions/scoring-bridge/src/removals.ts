@@ -1,6 +1,7 @@
+import type { MeasurementRemovedEvent, RemoveMeasurementCommand } from '@bdiadiun/scoring-contract';
+
 import { LOG_PREFIX } from './config';
 import type { PostToHost } from './messaging';
-import type { MeasurementRemovedEvent, RemoveMeasurementCommand } from './contract/messages';
 
 // P-6 / A-10, the echo-loop point: causedBy lets the host recognise its own echo, and
 // idempotency (unknown uid -> no remove() call) ends a loop even for a host that ignores it.
