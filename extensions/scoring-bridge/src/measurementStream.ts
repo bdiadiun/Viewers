@@ -1,6 +1,7 @@
 import { LOG_PREFIX } from './config';
 import { DisarmReason } from './commands';
 import type { ArmedState } from './commands';
+import { toGeometry } from './geometry';
 import { toMetrics } from './measurements';
 import type { OhifMeasurementLike } from './measurements';
 import type { PostToHost } from './messaging';
@@ -42,6 +43,7 @@ interface AddedEventParts {
   uid: string;
   toolName: string;
   metrics: Metrics;
+  measurement: OhifMeasurementLike;
   armed: ArmedState | null;
 }
 
@@ -58,6 +60,7 @@ const toAddedEvent = ({
   uid,
   toolName,
   metrics,
+  measurement,
   armed,
 }: AddedEventParts): MeasurementAddedEvent => ({
   version: 1,
@@ -67,6 +70,8 @@ const toAddedEvent = ({
   toolName,
   metrics,
   causedBy: armed?.requestId,
+  // A-14: carried so the form can persist enough to have the annotation rebuilt after a reload.
+  geometry: toGeometry(measurement),
 });
 
 const createAddedCorrection = ({
@@ -91,7 +96,8 @@ const createAddedCorrection = ({
     }
 
     console.debug(`${LOG_PREFIX} correcting late cachedStats for ${uid}`);
-    reported.pushUpdate(uid, { toolName: readToolName(fresh), metrics });
+    const update = { toolName: readToolName(fresh), metrics, geometry: toGeometry(fresh) };
+    reported.pushUpdate(uid, update);
   };
 
   return {
@@ -135,7 +141,8 @@ const createAddedHandler =
     }
 
     const armed = getArmed();
-    const event = toAddedEvent({ uid, toolName: readToolName(measurement), metrics, armed });
+    const toolName = readToolName(measurement);
+    const event = toAddedEvent({ uid, toolName, metrics, measurement, armed });
 
     if (!post(event)) {
       return;
@@ -177,7 +184,12 @@ const createUpdatedHandler =
       return;
     }
 
-    reported.pushUpdate(uid, { toolName: readToolName(measurement), metrics });
+    const update = {
+      toolName: readToolName(measurement),
+      metrics,
+      geometry: toGeometry(measurement),
+    };
+    reported.pushUpdate(uid, update);
   };
 
 // P-6 / A-10: the other end of the loop in removals.ts. `measurement` is the uid string, not

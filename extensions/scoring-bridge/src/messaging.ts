@@ -5,6 +5,7 @@ import type {
   MeasurementAddedEvent,
   MeasurementRemovedEvent,
   MeasurementUpdatedEvent,
+  MeasurementsRestoredEvent,
   ViewerReadyEvent,
 } from './contract/messages';
 
@@ -12,7 +13,8 @@ export type ViewerEvent =
   | ViewerReadyEvent
   | MeasurementAddedEvent
   | MeasurementUpdatedEvent
-  | MeasurementRemovedEvent;
+  | MeasurementRemovedEvent
+  | MeasurementsRestoredEvent;
 
 export type PostToHost = (message: ViewerEvent) => boolean;
 

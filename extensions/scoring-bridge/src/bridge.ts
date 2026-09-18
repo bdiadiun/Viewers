@@ -2,6 +2,7 @@ import { LOG_PREFIX } from './config';
 import { createToolCommands, DisarmReason } from './commands';
 import { createRemovalCommands } from './removals';
 import { createFocusCommands } from './focus';
+import { createRestoreCommands } from './restore';
 import { createHandshake } from './handshake';
 import { createCommandListener, postToHost } from './messaging';
 import { createMeasurementStream } from './measurementStream';
@@ -24,12 +25,14 @@ export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): 
 
   const removals = createRemovalCommands({ servicesManager, forget: reported.forget });
   const focus = createFocusCommands({ servicesManager });
+  const restore = createRestoreCommands({ servicesManager, reported, post: postToHost });
 
   const toolCommands = createToolCommands({
     servicesManager,
     commandsManager,
     onRemoveMeasurement: removals.handleRemove,
     onFocusMeasurement: focus.handleFocus,
+    onRestoreMeasurements: restore.handleRestore,
   });
 
   const stream = createMeasurementStream({
@@ -47,6 +50,7 @@ export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): 
   const disposers: Unsubscribe[] = [
     reported.dispose,
     removals.dispose,
+    restore.dispose,
     stream.dispose,
     listener.dispose,
     handshake.dispose,

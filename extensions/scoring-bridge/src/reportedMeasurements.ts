@@ -1,7 +1,7 @@
 import { LOG_PREFIX } from './config';
 import { createThrottledEmitter } from './throttle';
 import type { PostToHost } from './messaging';
-import type { MeasurementUpdatedEvent, Metrics } from './contract/messages';
+import type { MeasurementGeometry, MeasurementUpdatedEvent, Metrics } from './contract/messages';
 
 // Ten updates a second follow a drag without visible lag and cut a 60 fps drag six-fold.
 const UPDATE_INTERVAL_MS = 100;
@@ -9,6 +9,7 @@ const UPDATE_INTERVAL_MS = 100;
 export interface MeasurementUpdate {
   toolName: string;
   metrics: Metrics;
+  geometry?: MeasurementGeometry;
 }
 
 export interface ReportedMeasurementsDeps {
@@ -20,6 +21,7 @@ export interface ReportedMeasurements {
   isBoundToRow: (uid: string) => boolean;
   wasLastSent: (uid: string, metrics: Metrics) => boolean;
   recordAdded: (uid: string, rowId: string | null, metrics: Metrics) => void;
+  bindRow: (uid: string, rowId: string) => void;
   pushUpdate: (uid: string, update: MeasurementUpdate) => void;
   forget: (uid: string) => void;
   dispose: () => void;
@@ -41,13 +43,14 @@ export const createReportedMeasurements = ({
 
   const updateEmitter = createThrottledEmitter<MeasurementUpdate>(
     UPDATE_INTERVAL_MS,
-    (uid, { toolName, metrics }) => {
+    (uid, { toolName, metrics, geometry }) => {
       const event: MeasurementUpdatedEvent = {
         version: 1,
         type: 'MEASUREMENT_UPDATED',
         measurementUid: uid,
         toolName,
         metrics,
+        geometry,
       };
 
       if (!post(event)) {
@@ -72,6 +75,12 @@ export const createReportedMeasurements = ({
       if (rowId !== null) {
         uidToRowId.set(uid, rowId);
       }
+    },
+
+    // A-14: a restored annotation never broadcasts MEASUREMENT_ADDED, so its row binding is
+    // seeded here before the add, or its MEASUREMENT_UPDATED would be dropped as unbound.
+    bindRow: (uid: string, rowId: string): void => {
+      uidToRowId.set(uid, rowId);
     },
 
     pushUpdate: (uid: string, update: MeasurementUpdate): void => {

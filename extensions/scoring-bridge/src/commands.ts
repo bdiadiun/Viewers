@@ -5,6 +5,7 @@ import type {
   FocusMeasurementCommand,
   HostCommand,
   RemoveMeasurementCommand,
+  RestoreMeasurementsCommand,
 } from './contract/messages';
 
 // The default primary-mouse tool (modes/basic/src/initToolGroups.ts:21-24); Pan, named in the
@@ -29,6 +30,7 @@ export interface ToolCommandsDeps {
   commandsManager: AppTypes.CommandsManager;
   onRemoveMeasurement: (command: RemoveMeasurementCommand) => void;
   onFocusMeasurement: (command: FocusMeasurementCommand) => void;
+  onRestoreMeasurements: (command: RestoreMeasurementsCommand) => void;
 }
 
 export interface ToolCommands {
@@ -54,6 +56,7 @@ interface DispatchDeps {
   onDeactivateTool: (command: DeactivateToolCommand) => void;
   onRemoveMeasurement: (command: RemoveMeasurementCommand) => void;
   onFocusMeasurement: (command: FocusMeasurementCommand) => void;
+  onRestoreMeasurements: (command: RestoreMeasurementsCommand) => void;
 }
 
 const createToolControl = ({
@@ -122,7 +125,13 @@ const createArmedRow = ({ activateTool }: Pick<ToolControl, 'activateTool'>): Ar
 };
 
 const createDispatch =
-  ({ onActivateTool, onDeactivateTool, onRemoveMeasurement, onFocusMeasurement }: DispatchDeps) =>
+  ({
+    onActivateTool,
+    onDeactivateTool,
+    onRemoveMeasurement,
+    onFocusMeasurement,
+    onRestoreMeasurements,
+  }: DispatchDeps) =>
   (command: HostCommand): void => {
     switch (command.type) {
       case 'ACTIVATE_TOOL':
@@ -138,6 +147,9 @@ const createDispatch =
       case 'FOCUS_MEASUREMENT':
         onFocusMeasurement(command);
         return;
+      case 'RESTORE_MEASUREMENTS':
+        onRestoreMeasurements(command);
+        return;
       default:
         console.warn(`${LOG_PREFIX} unhandled host command`, command);
     }
@@ -148,6 +160,7 @@ export const createToolCommands = ({
   commandsManager,
   onRemoveMeasurement,
   onFocusMeasurement,
+  onRestoreMeasurements,
 }: ToolCommandsDeps): ToolCommands => {
   const { readActiveTool, activateTool } = createToolControl({ servicesManager, commandsManager });
   const armedRow = createArmedRow({ activateTool });
@@ -205,6 +218,7 @@ export const createToolCommands = ({
       onDeactivateTool,
       onRemoveMeasurement,
       onFocusMeasurement,
+      onRestoreMeasurements,
     }),
     getArmedRowId: () => armedRow.get()?.rowId ?? null,
     getArmed: armedRow.get,
