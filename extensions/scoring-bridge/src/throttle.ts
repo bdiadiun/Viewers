@@ -3,7 +3,6 @@
 
 export interface ThrottledEmitter<T> {
   push: (key: string, value: T) => void;
-  flush: (key?: string) => void;
   discard: (key: string) => void;
   dispose: () => void;
 }
@@ -86,25 +85,6 @@ export const createThrottledEmitter = <T>(
       }
 
       pushValue(state, key, value);
-    },
-
-    flush: (key?: string): void => {
-      if (disposed) {
-        return;
-      }
-
-      const keys = key === undefined ? Array.from(state.keys.keys()) : [key];
-
-      for (const k of keys) {
-        const keyState = state.keys.get(k);
-
-        if (!keyState) {
-          continue;
-        }
-
-        stopTimer(keyState);
-        emitPending(k, keyState, emit);
-      }
     },
 
     discard: (key: string): void => {

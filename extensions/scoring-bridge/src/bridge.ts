@@ -23,7 +23,11 @@ export interface Bridge {
 export const createBridge = ({ servicesManager, commandsManager }: BridgeDeps): Bridge => {
   const reported = createReportedMeasurements({ post: postToHost });
 
-  const removals = createRemovalCommands({ servicesManager, forget: reported.forget });
+  const removals = createRemovalCommands({
+    servicesManager,
+    post: postToHost,
+    forget: reported.forget,
+  });
   const focus = createFocusCommands({ servicesManager });
   const restore = createRestoreCommands({ servicesManager, reported, post: postToHost });
 

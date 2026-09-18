@@ -1,11 +1,13 @@
 import { LOG_PREFIX } from './config';
-import type { RemoveMeasurementCommand } from './contract/messages';
+import type { PostToHost } from './messaging';
+import type { MeasurementRemovedEvent, RemoveMeasurementCommand } from './contract/messages';
 
 // P-6 / A-10, the echo-loop point: causedBy lets the host recognise its own echo, and
-// idempotency (unknown uid -> no call, no event) ends a loop even for a host that ignores it.
+// idempotency (unknown uid -> no remove() call) ends a loop even for a host that ignores it.
 
 export interface RemovalCommandsDeps {
   servicesManager: AppTypes.ServicesManager;
+  post: PostToHost;
   forget: (uid: string) => void;
 }
 
@@ -17,6 +19,7 @@ export interface RemovalCommands {
 
 export const createRemovalCommands = ({
   servicesManager,
+  post,
   forget,
 }: RemovalCommandsDeps): RemovalCommands => {
   const { measurementService } = servicesManager.services;
@@ -37,9 +40,18 @@ export const createRemovalCommands = ({
     // return (MeasurementService.ts:675-680).
     if (!measurementService.getMeasurement(measurementUid)) {
       console.debug(
-        `${LOG_PREFIX} REMOVE_MEASUREMENT ${requestId}: measurement ${measurementUid} (row ${rowId}) is already gone; nothing to do`
+        `${LOG_PREFIX} REMOVE_MEASUREMENT ${requestId}: measurement ${measurementUid} (row ${rowId}) is already gone; answering without removing`
       );
       forget(measurementUid);
+      // Answered anyway: the host drops the requestId only on the matching event, so silence here
+      // would leak it for the life of the page.
+      const event: MeasurementRemovedEvent = {
+        version: 1,
+        type: 'MEASUREMENT_REMOVED',
+        measurementUid,
+        causedBy: requestId,
+      };
+      post(event);
       return;
     }
 

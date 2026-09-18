@@ -150,8 +150,11 @@ const createDispatch =
       case 'RESTORE_MEASUREMENTS':
         onRestoreMeasurements(command);
         return;
-      default:
-        console.warn(`${LOG_PREFIX} unhandled host command`, command);
+      default: {
+        // Fails the type check when a new command type is added to the contract.
+        const unhandled: never = command;
+        console.warn(`${LOG_PREFIX} unhandled host command`, unhandled);
+      }
     }
   };
 
