@@ -2,15 +2,15 @@ import { annotation } from '@cornerstonejs/tools';
 import { triggerAnnotationRenderForViewportIds } from '@cornerstonejs/tools/utilities';
 
 import { LOG_PREFIX } from './config';
-import { isRestorableGeometry } from './geometry';
 import type { PostToHost } from './messaging';
 import type { ReportedMeasurements } from './reportedMeasurements';
-import type {
-  MeasurementsRestoredEvent,
-  RestoreFailure,
-  RestoreFailureReason,
-  RestoreMeasurementRequest,
-  RestoreMeasurementsCommand,
+import {
+  isMeasurementGeometry,
+  type MeasurementsRestoredEvent,
+  type RestoreFailure,
+  type RestoreFailureReason,
+  type RestoreMeasurementRequest,
+  type RestoreMeasurementsCommand,
 } from './contract/messages';
 
 // A-14 / S-5.6. No value is posted from here: cornerstone recomputes cachedStats in the render
@@ -104,7 +104,7 @@ const createRowRestorer =
       return 'already-present';
     }
 
-    if (!isRestorableGeometry(request.geometry)) {
+    if (!isMeasurementGeometry(request.geometry)) {
       return 'invalid-geometry';
     }
 

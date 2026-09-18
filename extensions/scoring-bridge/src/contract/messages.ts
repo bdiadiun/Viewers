@@ -19,6 +19,16 @@ export type Metrics = Record<string, Metric>;
 
 export type ToolName = 'EllipticalROI' | 'RectangleROI' | 'Length';
 
+// The metric key a tool writes into `Metrics`; both sides derive it from the tool name rather
+// than storing it, so the two can never drift apart.
+export type MetricKey = 'area' | 'length';
+
+export const METRIC_KEY_BY_TOOL: Record<ToolName, MetricKey> = {
+  EllipticalROI: 'area',
+  RectangleROI: 'area',
+  Length: 'length',
+};
+
 // host -> viewer
 
 export interface ActivateToolCommand {
@@ -168,7 +178,7 @@ export const VIEWER_EVENT_TYPES = [
 ] as const;
 
 const UNIT_VALUES: readonly Unit[] = ['mm2', 'px2', 'mm', 'px'];
-const TOOL_NAME_VALUES: readonly ToolName[] = ['EllipticalROI', 'RectangleROI', 'Length'];
+export const TOOL_NAME_VALUES: readonly ToolName[] = ['EllipticalROI', 'RectangleROI', 'Length'];
 const RESTORE_FAILURE_REASON_VALUES: readonly RestoreFailureReason[] = [
   'already-present',
   'unknown-study',
@@ -176,16 +186,16 @@ const RESTORE_FAILURE_REASON_VALUES: readonly RestoreFailureReason[] = [
   'viewer-error',
 ];
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const isNonEmptyString = (value: unknown): value is string =>
+export const isNonEmptyString = (value: unknown): value is string =>
   typeof value === 'string' && value.length > 0;
 
 const isUnit = (value: unknown): value is Unit =>
   typeof value === 'string' && (UNIT_VALUES as readonly string[]).includes(value);
 
-const isToolName = (value: unknown): value is ToolName =>
+export const isToolName = (value: unknown): value is ToolName =>
   typeof value === 'string' && (TOOL_NAME_VALUES as readonly string[]).includes(value);
 
 const isMetric = (value: unknown): value is Metric =>
@@ -201,14 +211,18 @@ const isMetrics = (value: unknown): value is Metrics => {
   return Object.values(value).every(isMetric);
 };
 
-const isFiniteNumberArray = (value: unknown): value is number[] =>
+// A world point is [x, y, z]; a shorter tuple breaks the first render in the viewer.
+const WORLD_POINT_LENGTH = 3;
+
+const isWorldPoint = (value: unknown): value is number[] =>
   Array.isArray(value) &&
+  value.length === WORLD_POINT_LENGTH &&
   value.every((entry) => typeof entry === 'number' && Number.isFinite(entry));
 
 const isPoints = (value: unknown): value is number[][] =>
-  Array.isArray(value) && value.length > 0 && value.every(isFiniteNumberArray);
+  Array.isArray(value) && value.length > 0 && value.every(isWorldPoint);
 
-const isMeasurementGeometry = (value: unknown): value is MeasurementGeometry =>
+export const isMeasurementGeometry = (value: unknown): value is MeasurementGeometry =>
   isRecord(value) &&
   isNonEmptyString(value.frameOfReferenceUid) &&
   isNonEmptyString(value.referencedImageId) &&
