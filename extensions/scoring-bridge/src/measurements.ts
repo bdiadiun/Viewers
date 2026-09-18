@@ -12,6 +12,10 @@ export interface OhifMeasurementLike {
   toolName?: string;
   referencedImageId?: string;
   data?: Record<string, StatsEntry> | null;
+  // A-14 restore inputs; `metadata` is the cornerstone annotation metadata by reference.
+  points?: unknown;
+  label?: string;
+  metadata?: { FrameOfReferenceUID?: string } | null;
 }
 
 // Spellings from cornerstone's getCalibratedUnits.js, plus ASCII in case the ² is dropped.
