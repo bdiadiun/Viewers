@@ -121,6 +121,8 @@ const toAreaMetrics = (measurement: OhifMeasurementLike, quiet?: boolean): Metri
     return null;
   }
 
+  // The assertion here and in toLengthMetrics is safe: findStatsEntry only returns an entry whose
+  // value already passed isFiniteNumber.
   return { area: { value: stats.area as number, unit } };
 };
 
