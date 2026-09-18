@@ -1,5 +1,4 @@
 import { LOG_PREFIX } from './config';
-import { isHostCommand } from './contract/messages';
 import type {
   ActivateToolCommand,
   DeactivateToolCommand,
@@ -33,21 +32,35 @@ export interface ToolCommandsDeps {
 }
 
 export interface ToolCommands {
-  handleMessage: (data: unknown) => void;
+  handleCommand: (command: HostCommand) => void;
   getArmedRowId: () => string | null;
   getArmed: () => ArmedState | null;
   disarm: (reason: DisarmReason, detail?: string) => void;
 }
 
-export const createToolCommands = ({
+interface ToolControl {
+  readActiveTool: () => string | null;
+  activateTool: (toolName: string) => boolean;
+}
+
+interface ArmedRow {
+  get: () => ArmedState | null;
+  arm: (state: ArmedState) => void;
+  disarm: (reason: DisarmReason, detail?: string) => void;
+}
+
+interface DispatchDeps {
+  onActivateTool: (command: ActivateToolCommand) => void;
+  onDeactivateTool: (command: DeactivateToolCommand) => void;
+  onRemoveMeasurement: (command: RemoveMeasurementCommand) => void;
+  onFocusMeasurement: (command: FocusMeasurementCommand) => void;
+}
+
+const createToolControl = ({
   servicesManager,
   commandsManager,
-  onRemoveMeasurement,
-  onFocusMeasurement,
-}: ToolCommandsDeps): ToolCommands => {
+}: Pick<ToolCommandsDeps, 'servicesManager' | 'commandsManager'>): ToolControl => {
   const { toolGroupService } = servicesManager.services;
-
-  let armed: ArmedState | null = null;
 
   // Without an id this resolves the active viewport's group, the one setToolActive uses
   // (ToolGroupService.ts:73-104).
@@ -81,63 +94,36 @@ export const createToolCommands = ({
     return true;
   };
 
-  const disarm = (reason: DisarmReason, detail?: string): void => {
-    if (!armed) {
-      return;
-    }
+  return { readActiveTool, activateTool };
+};
 
-    const toolToRestore = armed.previousTool ?? FALLBACK_TOOL;
-    console.debug(
-      `${LOG_PREFIX} disarming row ${armed.rowId} (${detail === undefined ? reason : `${reason} ${detail}`}); restoring tool ${toolToRestore}`
-    );
-    armed = null;
-    activateTool(toolToRestore);
-  };
+const createArmedRow = ({ activateTool }: Pick<ToolControl, 'activateTool'>): ArmedRow => {
+  let armed: ArmedState | null = null;
 
-  const onActivateTool = (command: ActivateToolCommand): void => {
-    // A-10: re-arming would overwrite previousTool with the tool we armed ourselves.
-    if (armed && armed.rowId === command.rowId) {
-      console.debug(`${LOG_PREFIX} ACTIVATE_TOOL for already armed row ${command.rowId}; ignored`);
-      return;
-    }
+  return {
+    get: (): ArmedState | null => armed,
+    arm: (state: ArmedState): void => {
+      armed = state;
+    },
 
-    // A-4: disarm first so the snapshot below is the user's tool, not one we armed.
-    if (armed) {
-      disarm(DisarmReason.SwitchingRow, command.rowId);
-    }
+    disarm: (reason: DisarmReason, detail?: string): void => {
+      if (!armed) {
+        return;
+      }
 
-    const previousTool = readActiveTool();
-
-    if (!activateTool(command.toolName)) {
-      return;
-    }
-
-    armed = { rowId: command.rowId, requestId: command.requestId, previousTool };
-    console.debug(
-      `${LOG_PREFIX} armed row ${command.rowId} with ${command.toolName}; previous tool ${previousTool ?? '(unknown)'}`
-    );
-  };
-
-  const onDeactivateTool = (command: DeactivateToolCommand): void => {
-    // A-10: already in the requested state (e.g. a cancel racing a finished drawing); a no-op.
-    if (!armed) {
+      const toolToRestore = armed.previousTool ?? FALLBACK_TOOL;
       console.debug(
-        `${LOG_PREFIX} DEACTIVATE_TOOL for row ${command.rowId} while unarmed; ignored`
+        `${LOG_PREFIX} disarming row ${armed.rowId} (${detail === undefined ? reason : `${reason} ${detail}`}); restoring tool ${toolToRestore}`
       );
-      return;
-    }
-
-    if (armed.rowId !== command.rowId) {
-      console.debug(
-        `${LOG_PREFIX} DEACTIVATE_TOOL for row ${command.rowId} while row ${armed.rowId} is armed; ignored`
-      );
-      return;
-    }
-
-    disarm(DisarmReason.DeactivateTool);
+      armed = null;
+      activateTool(toolToRestore);
+    },
   };
+};
 
-  const dispatch = (command: HostCommand): void => {
+const createDispatch =
+  ({ onActivateTool, onDeactivateTool, onRemoveMeasurement, onFocusMeasurement }: DispatchDeps) =>
+  (command: HostCommand): void => {
     switch (command.type) {
       case 'ACTIVATE_TOOL':
         onActivateTool(command);
@@ -157,17 +143,71 @@ export const createToolCommands = ({
     }
   };
 
-  return {
-    handleMessage: (data: unknown): void => {
-      if (!isHostCommand(data)) {
-        console.warn(`${LOG_PREFIX} ignoring message that is not a valid host command`, data);
-        return;
-      }
+export const createToolCommands = ({
+  servicesManager,
+  commandsManager,
+  onRemoveMeasurement,
+  onFocusMeasurement,
+}: ToolCommandsDeps): ToolCommands => {
+  const { readActiveTool, activateTool } = createToolControl({ servicesManager, commandsManager });
+  const armedRow = createArmedRow({ activateTool });
 
-      dispatch(data);
-    },
-    getArmedRowId: () => armed?.rowId ?? null,
-    getArmed: () => armed,
-    disarm,
+  const onActivateTool = (command: ActivateToolCommand): void => {
+    const armed = armedRow.get();
+
+    // A-10: re-arming would overwrite previousTool with the tool we armed ourselves.
+    if (armed && armed.rowId === command.rowId) {
+      console.debug(`${LOG_PREFIX} ACTIVATE_TOOL for already armed row ${command.rowId}; ignored`);
+      return;
+    }
+
+    // A-4: disarm first so the snapshot below is the user's tool, not one we armed.
+    if (armed) {
+      armedRow.disarm(DisarmReason.SwitchingRow, command.rowId);
+    }
+
+    const previousTool = readActiveTool();
+
+    if (!activateTool(command.toolName)) {
+      return;
+    }
+
+    armedRow.arm({ rowId: command.rowId, requestId: command.requestId, previousTool });
+    console.debug(
+      `${LOG_PREFIX} armed row ${command.rowId} with ${command.toolName}; previous tool ${previousTool ?? '(unknown)'}`
+    );
+  };
+
+  const onDeactivateTool = (command: DeactivateToolCommand): void => {
+    const armed = armedRow.get();
+
+    // A-10: already in the requested state (e.g. a cancel racing a finished drawing); a no-op.
+    if (!armed) {
+      console.debug(
+        `${LOG_PREFIX} DEACTIVATE_TOOL for row ${command.rowId} while unarmed; ignored`
+      );
+      return;
+    }
+
+    if (armed.rowId !== command.rowId) {
+      console.debug(
+        `${LOG_PREFIX} DEACTIVATE_TOOL for row ${command.rowId} while row ${armed.rowId} is armed; ignored`
+      );
+      return;
+    }
+
+    armedRow.disarm(DisarmReason.DeactivateTool);
+  };
+
+  return {
+    handleCommand: createDispatch({
+      onActivateTool,
+      onDeactivateTool,
+      onRemoveMeasurement,
+      onFocusMeasurement,
+    }),
+    getArmedRowId: () => armedRow.get()?.rowId ?? null,
+    getArmed: armedRow.get,
+    disarm: armedRow.disarm,
   };
 };
