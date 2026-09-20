@@ -1,11 +1,4 @@
-import type {
-  ActivateToolCommand,
-  DeactivateToolCommand,
-  FocusMeasurementCommand,
-  HostCommand,
-  RemoveMeasurementCommand,
-  RestoreMeasurementsCommand,
-} from '@bdiadiun/scoring-contract';
+import type { ActivateToolCommand, DeactivateToolCommand } from '@bdiadiun/scoring-contract';
 
 import { LOG_PREFIX } from './config';
 
@@ -29,13 +22,11 @@ export interface ArmedState {
 export interface ToolCommandsDeps {
   servicesManager: AppTypes.ServicesManager;
   commandsManager: AppTypes.CommandsManager;
-  onRemoveMeasurement: (command: RemoveMeasurementCommand) => void;
-  onFocusMeasurement: (command: FocusMeasurementCommand) => void;
-  onRestoreMeasurements: (command: RestoreMeasurementsCommand) => void;
 }
 
 export interface ToolCommands {
-  handleCommand: (command: HostCommand) => void;
+  handleActivateTool: (command: ActivateToolCommand) => void;
+  handleDeactivateTool: (command: DeactivateToolCommand) => void;
   getArmedRowId: () => string | null;
   getArmed: () => ArmedState | null;
   disarm: (reason: DisarmReason, detail?: string) => void;
@@ -50,14 +41,6 @@ interface ArmedRow {
   get: () => ArmedState | null;
   arm: (state: ArmedState) => void;
   disarm: (reason: DisarmReason, detail?: string) => void;
-}
-
-interface DispatchDeps {
-  onActivateTool: (command: ActivateToolCommand) => void;
-  onDeactivateTool: (command: DeactivateToolCommand) => void;
-  onRemoveMeasurement: (command: RemoveMeasurementCommand) => void;
-  onFocusMeasurement: (command: FocusMeasurementCommand) => void;
-  onRestoreMeasurements: (command: RestoreMeasurementsCommand) => void;
 }
 
 const createToolControl = ({
@@ -125,51 +108,14 @@ const createArmedRow = ({ activateTool }: Pick<ToolControl, 'activateTool'>): Ar
   };
 };
 
-const createDispatch =
-  ({
-    onActivateTool,
-    onDeactivateTool,
-    onRemoveMeasurement,
-    onFocusMeasurement,
-    onRestoreMeasurements,
-  }: DispatchDeps) =>
-  (command: HostCommand): void => {
-    switch (command.type) {
-      case 'ACTIVATE_TOOL':
-        onActivateTool(command);
-        return;
-      case 'DEACTIVATE_TOOL':
-        onDeactivateTool(command);
-        return;
-      case 'REMOVE_MEASUREMENT':
-        // Removing or focusing an existing annotation leaves the armed row waiting for its drawing.
-        onRemoveMeasurement(command);
-        return;
-      case 'FOCUS_MEASUREMENT':
-        onFocusMeasurement(command);
-        return;
-      case 'RESTORE_MEASUREMENTS':
-        onRestoreMeasurements(command);
-        return;
-      default: {
-        // Fails the type check when a new command type is added to the contract.
-        const unhandled: never = command;
-        console.warn(`${LOG_PREFIX} unhandled host command`, unhandled);
-      }
-    }
-  };
-
 export const createToolCommands = ({
   servicesManager,
   commandsManager,
-  onRemoveMeasurement,
-  onFocusMeasurement,
-  onRestoreMeasurements,
 }: ToolCommandsDeps): ToolCommands => {
   const { readActiveTool, activateTool } = createToolControl({ servicesManager, commandsManager });
   const armedRow = createArmedRow({ activateTool });
 
-  const onActivateTool = (command: ActivateToolCommand): void => {
+  const handleActivateTool = (command: ActivateToolCommand): void => {
     const armed = armedRow.get();
 
     // A-10: re-arming would overwrite previousTool with the tool we armed ourselves.
@@ -195,7 +141,7 @@ export const createToolCommands = ({
     );
   };
 
-  const onDeactivateTool = (command: DeactivateToolCommand): void => {
+  const handleDeactivateTool = (command: DeactivateToolCommand): void => {
     const armed = armedRow.get();
 
     // A-10: already in the requested state (e.g. a cancel racing a finished drawing); a no-op.
@@ -217,13 +163,8 @@ export const createToolCommands = ({
   };
 
   return {
-    handleCommand: createDispatch({
-      onActivateTool,
-      onDeactivateTool,
-      onRemoveMeasurement,
-      onFocusMeasurement,
-      onRestoreMeasurements,
-    }),
+    handleActivateTool,
+    handleDeactivateTool,
     getArmedRowId: () => armedRow.get()?.rowId ?? null,
     getArmed: armedRow.get,
     disarm: armedRow.disarm,
