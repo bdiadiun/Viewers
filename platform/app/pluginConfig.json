@@ -67,7 +67,7 @@
       "version": "3.0.0"
     },
     {
-      "packageName": "@ohif/extension-scoring-bridge",
+      "packageName": "@bdiadiun/ohif-extension-scoring-bridge",
       "version": "0.0.1"
     }
   ],
