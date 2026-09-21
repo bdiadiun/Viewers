@@ -1907,17 +1907,24 @@
   resolved "https://registry.yarnpkg.com/@bcoe/v8-coverage/-/v8-coverage-0.2.3.tgz#75a2e8b51cb758a7553d6804a5932d7aace75c39"
   integrity sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==
 
-"@bdiadiun/ohif-extension-scoring-bridge@0.0.1":
+"@bdiadiun/ohif-extension-scoring-adapter@0.0.1":
   version "0.0.1"
-  resolved "https://registry.yarnpkg.com/@bdiadiun/ohif-extension-scoring-bridge/-/ohif-extension-scoring-bridge-0.0.1.tgz#6eda0101e5a29a6b0fb0f212fd9e56e467a3b0d6"
-  integrity sha512-ipptXe2d0PGxWRYdRxtP6gLOhSW4zKuJbo1c2x5YlU9VXQwDT6PYFhzRsiklp8nd0Ydf/O98zoN/CFyeKMUlyw==
+  resolved "https://registry.yarnpkg.com/@bdiadiun/ohif-extension-scoring-adapter/-/ohif-extension-scoring-adapter-0.0.1.tgz#8c5edbaac42c28bfb7f12f337702c82ca3a2513c"
+  integrity sha512-HBMT5kZhDmGtc2m6xKgBP66yHhcFopcchx35BXPuFd2x2cWTx7vBXSDSIzOOVBRxfIwRIvGELSvbFumHgtVb2Q==
   dependencies:
-    "@bdiadiun/scoring-contract" "0.0.1"
+    "@bdiadiun/ohif-extension-scoring-bridge" "0.0.2"
 
-"@bdiadiun/scoring-contract@0.0.1":
-  version "0.0.1"
-  resolved "https://registry.yarnpkg.com/@bdiadiun/scoring-contract/-/scoring-contract-0.0.1.tgz#f2fc78a7011abf8fe72df996087775da49351eef"
-  integrity sha512-D77TAuZRSY2auchn3kPhds60yuZnt0QUEe5VoDhNgcMozbP1iWlbhxBItTL1YVF6zBP7/Pawbt/9TTb0MC1yWg==
+"@bdiadiun/ohif-extension-scoring-bridge@0.0.2":
+  version "0.0.2"
+  resolved "https://registry.yarnpkg.com/@bdiadiun/ohif-extension-scoring-bridge/-/ohif-extension-scoring-bridge-0.0.2.tgz#a00074e550e5655eb9928f01e55a6854ab88e078"
+  integrity sha512-njbkXCtCZE6J4nnnGM1w/v1luzCMGVTYRyRAw5CXXdwz6bw7fieSyQGFA3IAtJbo56EBm2Hzt4Plf21E9SQlOQ==
+  dependencies:
+    "@bdiadiun/scoring-contract" "0.0.7"
+
+"@bdiadiun/scoring-contract@0.0.7":
+  version "0.0.7"
+  resolved "https://registry.yarnpkg.com/@bdiadiun/scoring-contract/-/scoring-contract-0.0.7.tgz#11a449d104620fe68921e0a59efa9691db66f079"
+  integrity sha512-FdlxvBwJS0Avk8lBqsN0uysG1FhUszRPZ2i9YRvVRzvN6wvAi0ubPNntE2o0WBnW7F8mX7pfDHShOWdvkQj+DQ==
 
 "@cornerstonejs/adapters@4.15.29":
   version "4.15.29"
