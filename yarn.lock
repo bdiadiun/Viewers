@@ -1907,6 +1907,13 @@
   resolved "https://registry.yarnpkg.com/@bcoe/v8-coverage/-/v8-coverage-0.2.3.tgz#75a2e8b51cb758a7553d6804a5932d7aace75c39"
   integrity sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==
 
+"@bdiadiun/ohif-extension-scoring-bridge@0.0.1":
+  version "0.0.1"
+  resolved "https://registry.yarnpkg.com/@bdiadiun/ohif-extension-scoring-bridge/-/ohif-extension-scoring-bridge-0.0.1.tgz#6eda0101e5a29a6b0fb0f212fd9e56e467a3b0d6"
+  integrity sha512-ipptXe2d0PGxWRYdRxtP6gLOhSW4zKuJbo1c2x5YlU9VXQwDT6PYFhzRsiklp8nd0Ydf/O98zoN/CFyeKMUlyw==
+  dependencies:
+    "@bdiadiun/scoring-contract" "0.0.1"
+
 "@bdiadiun/scoring-contract@0.0.1":
   version "0.0.1"
   resolved "https://registry.yarnpkg.com/@bdiadiun/scoring-contract/-/scoring-contract-0.0.1.tgz#f2fc78a7011abf8fe72df996087775da49351eef"
