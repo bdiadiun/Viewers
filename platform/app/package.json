@@ -49,7 +49,7 @@
   ],
   "dependencies": {
     "@babel/runtime": "7.28.2",
-    "@bdiadiun/ohif-extension-scoring-adapter": "0.0.7",
+    "@bdiadiun/ohif-extension-scoring-adapter": "0.0.8",
     "@cornerstonejs/codec-charls": "1.2.3",
     "@cornerstonejs/codec-libjpeg-turbo-8bit": "1.2.2",
     "@cornerstonejs/codec-openjpeg": "1.3.0",
