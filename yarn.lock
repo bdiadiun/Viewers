@@ -1907,32 +1907,32 @@
   resolved "https://registry.yarnpkg.com/@bcoe/v8-coverage/-/v8-coverage-0.2.3.tgz#75a2e8b51cb758a7553d6804a5932d7aace75c39"
   integrity sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==
 
-"@bdiadiun/ohif-extension-scoring-adapter@0.0.6":
-  version "0.0.6"
-  resolved "https://registry.yarnpkg.com/@bdiadiun/ohif-extension-scoring-adapter/-/ohif-extension-scoring-adapter-0.0.6.tgz#28f1b7e911d104f1442ecc4b2b32fe159e2384f5"
-  integrity sha512-msHjtrwHSZpb4GbRAdbSG2az+dhVIKzQCNeA38w1PaimmZflB0C2/HSh0CXSSGWOWGL4ezRWsmuVshiTgccXwg==
-  dependencies:
-    "@bdiadiun/ohif-extension-scoring-bridge" "0.0.7"
-
-"@bdiadiun/ohif-extension-scoring-bridge@0.0.7":
+"@bdiadiun/ohif-extension-scoring-adapter@0.0.7":
   version "0.0.7"
-  resolved "https://registry.yarnpkg.com/@bdiadiun/ohif-extension-scoring-bridge/-/ohif-extension-scoring-bridge-0.0.7.tgz#8cadb77f0f924d81bed1fc875ee5c29a69355004"
-  integrity sha512-U6sSZnYT8zipYbO/BIFLTMnGTLxOM80Jn7HWHSI6ZRnqBIwlc4uil6/jYSqAFIqVkkCGuXGIHjeeIRY/ehLD8Q==
+  resolved "https://registry.yarnpkg.com/@bdiadiun/ohif-extension-scoring-adapter/-/ohif-extension-scoring-adapter-0.0.7.tgz#c5dc602f66324fb58763f1f0b0a42de81800cc17"
+  integrity sha512-S7RJ6SGgwT8gFkXaaRe2XWXLdSaOb+z59wiA0uYFxh3cMpOAjeyrcCKcSW68599ecmAUQk0DTrqbFHIbzHypIg==
   dependencies:
-    "@bdiadiun/scoring-channel" "0.0.5"
-    "@bdiadiun/scoring-contract" "0.0.11"
+    "@bdiadiun/ohif-extension-scoring-bridge" "0.0.8"
 
-"@bdiadiun/scoring-channel@0.0.5":
-  version "0.0.5"
-  resolved "https://registry.yarnpkg.com/@bdiadiun/scoring-channel/-/scoring-channel-0.0.5.tgz#0d18b7b7f901a709340ba18614489e552e6be910"
-  integrity sha512-FjTcToitFNu3JQJFSK3h1JSO1ZW071SM/gmt7CssfvH+FpulicDiof84JrUaMWKTQseU5PsoZIxhbtTSwQ8r5Q==
+"@bdiadiun/ohif-extension-scoring-bridge@0.0.8":
+  version "0.0.8"
+  resolved "https://registry.yarnpkg.com/@bdiadiun/ohif-extension-scoring-bridge/-/ohif-extension-scoring-bridge-0.0.8.tgz#d2827b611adad7cb8994756bf55a031c6d313601"
+  integrity sha512-gNSYiCm7NAzcjsS1lLQ7o0vojfc8G85YVrKCYkQ4lDY3e8hdfCyGWld1LlQcLFISnvsWRiS90ybppPuBiHclQQ==
   dependencies:
-    "@bdiadiun/scoring-contract" "0.0.11"
+    "@bdiadiun/scoring-channel" "0.0.6"
+    "@bdiadiun/scoring-contract" "0.0.12"
 
-"@bdiadiun/scoring-contract@0.0.11":
-  version "0.0.11"
-  resolved "https://registry.yarnpkg.com/@bdiadiun/scoring-contract/-/scoring-contract-0.0.11.tgz#b07a042a59008346802d8a4b5d7e926ff6a72125"
-  integrity sha512-ThUoQfSEkzfAt4mHNu07Zx7i1B7tPhRAIbiXdcRXXeE42xZOH1EDMxFYlaLfM3yqxMp2ZqKof57obR0kwwR5mg==
+"@bdiadiun/scoring-channel@0.0.6":
+  version "0.0.6"
+  resolved "https://registry.yarnpkg.com/@bdiadiun/scoring-channel/-/scoring-channel-0.0.6.tgz#5d51fb2eb246c5d43a957094cec0082d3dc9b01f"
+  integrity sha512-j8TwyKh+98S5h1rmtvOmo85R1/y4fa6AZoDBDYjWINcKpE+njOmtpOaq/9ykdNuGh3ciA9TzEL+3iiGArl/40g==
+  dependencies:
+    "@bdiadiun/scoring-contract" "0.0.12"
+
+"@bdiadiun/scoring-contract@0.0.12":
+  version "0.0.12"
+  resolved "https://registry.yarnpkg.com/@bdiadiun/scoring-contract/-/scoring-contract-0.0.12.tgz#05f8dd77db936d5cae66cdd97036a1d4a47257cc"
+  integrity sha512-apER9gCU2KpfjXisw/SkFgv150gEpPlaZgSXHD3L7sTiST/W5y7eebX3pE/8nw2YVHNPi6wVUw2joYsw8XWSMA==
 
 "@cornerstonejs/adapters@4.15.29":
   version "4.15.29"
