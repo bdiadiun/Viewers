@@ -1907,17 +1907,17 @@
   resolved "https://registry.yarnpkg.com/@bcoe/v8-coverage/-/v8-coverage-0.2.3.tgz#75a2e8b51cb758a7553d6804a5932d7aace75c39"
   integrity sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==
 
-"@bdiadiun/ohif-extension-scoring-adapter@0.0.9":
-  version "0.0.9"
-  resolved "https://registry.yarnpkg.com/@bdiadiun/ohif-extension-scoring-adapter/-/ohif-extension-scoring-adapter-0.0.9.tgz#3458c42213dd86b3b7b97caba9810b88656a6db8"
-  integrity sha512-LCKM5sYRLEFSw3z4Bi3DZ5OjxdKjxCMBIV2LvO/1icraIP63KHYzK87DpJSVvfihLD3I3bK/JQI9a9z4fa3+Jw==
+"@bdiadiun/ohif-extension-loader@0.1.0":
+  version "0.1.0"
+  resolved "https://registry.yarnpkg.com/@bdiadiun/ohif-extension-loader/-/ohif-extension-loader-0.1.0.tgz#5f3700b091067be5fc91dba28fefe00e5c2dbc08"
+  integrity sha512-GkyWMe7VigrhLCFzvL2HgfGpu/M8F5STVsF4TjeRvTczBN8NeKjMVG2tqzFwwE6VBtN28BswpmQS3tN5n1VeAw==
   dependencies:
-    "@bdiadiun/ohif-extension-scoring-bridge" "0.0.10"
+    "@bdiadiun/ohif-extension-scoring-viewer" "0.1.0"
 
-"@bdiadiun/ohif-extension-scoring-bridge@0.0.10":
-  version "0.0.10"
-  resolved "https://registry.yarnpkg.com/@bdiadiun/ohif-extension-scoring-bridge/-/ohif-extension-scoring-bridge-0.0.10.tgz#4e89c86639ade69ad47ef16ebae73c229f1b79ca"
-  integrity sha512-uSG0bbXiL/HFI0bvrGDcVWXDLLbU0Nm7Eq7PWnH4MB9wCU1MafO2C5xz8+3Wdr2xjyx+/eN5Zkh0B82WVwbm5w==
+"@bdiadiun/ohif-extension-scoring-viewer@0.1.0":
+  version "0.1.0"
+  resolved "https://registry.yarnpkg.com/@bdiadiun/ohif-extension-scoring-viewer/-/ohif-extension-scoring-viewer-0.1.0.tgz#411428b2374427698d20b1cff5cf413f45cc587d"
+  integrity sha512-IiwxPtWQk9NJBQ6EU4fGbIJEOcC6GLvq2LSMMm4c0GgbMWFS+rMvBzyGmRBoT40AHm+Vx06M1g+cUJPEZPDKDQ==
   dependencies:
     "@bdiadiun/scoring-channel" "0.0.8"
     "@bdiadiun/scoring-contract" "0.0.14"
