@@ -67,7 +67,7 @@
       "version": "3.0.0"
     },
     {
-      "packageName": "@bdiadiun/ohif-extension-scoring-adapter",
+      "packageName": "@bdiadiun/ohif-extension-loader",
       "version": "0.0.1"
     }
   ],
